@@ -184,13 +184,24 @@
             <button data-tab="report" onclick="switchTab('report')" class="tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 bg-stone-800 text-stone-50">评估报告</button>
             <button data-tab="tutorial" onclick="switchTab('tutorial')" class="tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 bg-transparent text-stone-600 border border-stone-300 hover:bg-stone-100">图文教学</button>
             <button data-tab="chat" onclick="switchTab('chat')" class="tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 bg-transparent text-stone-600 border border-stone-300 hover:bg-stone-100">项目问答</button>
+            <button data-tab="history" onclick="switchTab('history')" class="tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 bg-transparent text-stone-600 border border-stone-300 hover:bg-stone-100">🗂️ 历史仓库</button>
           </div>
 
           <div id="tab-report" class="tab-pane">
+            <div class="flex items-center gap-3 mb-4 flex-wrap">
+              <span class="font-sans text-xs text-stone-500">导出本页：</span>
+              <button onclick="exportDoc('report','HTML')" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-white text-stone-700 border border-stone-300 hover:bg-stone-100">🌐 导出 HTML</button>
+              <button onclick="exportDoc('report','PDF')" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-white text-stone-700 border border-stone-300 hover:bg-stone-100">🖨️ 导出 PDF</button>
+            </div>
             <div id="reportBox" class="md max-w-none"><div class="mod-card-lead text-stone-400 font-sans text-sm py-10 text-center">👆 点击上方「📊 生成评估报告」开始</div></div>
           </div>
 
           <div id="tab-tutorial" class="tab-pane hidden">
+            <div class="flex items-center gap-3 mb-4 flex-wrap">
+              <span class="font-sans text-xs text-stone-500">导出本页：</span>
+              <button onclick="exportDoc('tutorial','HTML')" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-white text-stone-700 border border-stone-300 hover:bg-stone-100">🌐 导出 HTML</button>
+              <button onclick="exportDoc('tutorial','PDF')" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-white text-stone-700 border border-stone-300 hover:bg-stone-100">🖨️ 导出 PDF</button>
+            </div>
             <div id="tutorialBox" class="md max-w-none"><div class="mod-card-lead text-stone-400 font-sans text-sm py-10 text-center">👆 点击上方「📚 生成零基础教学」开始</div></div>
           </div>
 
@@ -201,6 +212,14 @@
               <button id="btnAsk" onclick="sendQuestion()" disabled class="px-6 py-3 rounded-full font-medium transition-colors duration-300 bg-stone-300 text-stone-500 cursor-not-allowed whitespace-nowrap">发送</button>
             </div>
             <p class="font-sans text-xs text-stone-500 mt-3">问答基于已加载的项目文件做本地检索后交由大模型回答，引用真实文件路径。</p>
+          </div>
+
+          <div id="tab-history" class="tab-pane hidden">
+            <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+              <p class="font-sans text-sm text-stone-600">最近加载过的仓库会自动记录在此（仅本机浏览器）。点击「重新加载」可一键再次拉取。</p>
+              <button onclick="clearHistory()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-white text-red-700 border border-red-200 hover:bg-red-50">🗑️ 清空全部</button>
+            </div>
+            <div id="historyBox" class="space-y-3"></div>
           </div>
         </div>
       </section>
@@ -468,6 +487,7 @@
           $('workspace').classList.remove('hidden');
           $('workspace').scrollIntoView({ behavior:'smooth' });
           setReady(true);
+          addHistoryRecord({ name: project.name, owner, repo, url: repoUrl, language: project.language||'', branch: project.branch, fileCount: files.length, treeCount: tree.length, loadedAt: Date.now() });
         } finally { clearTimeout(timer); }
       } catch (e) {
         clearInterval(ticker);
@@ -674,6 +694,82 @@
         addChatBubble('assistant', '❌ ' + msg);
       }
     }
+
+    // ---------- 导出 HTML / PDF ----------
+    const EXPORT_CSS = "*{box-sizing:border-box}body{font-family:'Noto Sans SC',system-ui,sans-serif;color:#44403c;background:#faf6f1;margin:0;padding:32px;line-height:1.75}.doc{max-width:820px;margin:0 auto;background:#fff;border:1px solid #e7e2da;border-radius:24px;padding:28px 36px}.doc-title{font-family:'Noto Serif SC',Georgia,serif;font-size:22px;margin:0 0 14px;color:#44403c;border-bottom:1px solid #e7e2da;padding-bottom:8px}.md h1{font-size:20px;font-family:'Noto Serif SC',serif;margin:14px 0 8px;color:#44403c}.md h2{font-size:17px;font-family:'Noto Serif SC',serif;margin:18px 0 8px;color:#44403c;border-bottom:1px solid #e7e2da;padding-bottom:6px}.md h3{font-size:15px;font-family:'Noto Serif SC',serif;margin:14px 0 6px;color:#57534e}.md p{margin:8px 0;color:#57534e}.md ul,.md ol{padding-left:22px;margin:8px 0}.md li{margin:3px 0;color:#57534e}.md a{color:#4f6e3e;text-decoration:underline}.md code{background:#f5f1ea;padding:1px 5px;border-radius:5px;font-size:13px;font-family:ui-monospace,monospace}.md pre{background:#292524;color:#f5f1ea;border-radius:12px;padding:12px;overflow-x:auto;font-size:13px}.md pre code{background:transparent;color:#f5f1ea;padding:0}.md blockquote{border-left:4px solid #d4a373;padding-left:12px;color:#78716c;font-style:italic;margin:10px 0}.md table{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0}.md th,.md td{border:1px solid #e7e2da;padding:6px 10px;text-align:left}.md th{background:#f5f1ea}.mod-card{background:#fff;border:1px solid #e7e2da;border-radius:16px;padding:12px 16px 16px;margin:0 0 16px;page-break-inside:avoid}.mod-card-lead{padding:0;margin-bottom:10px}@page{margin:14mm}@media print{body{background:#fff;padding:0}.doc{border:none;border-radius:0;padding:0;max-width:none}}";
+    function buildStandaloneHTML(title, innerHTML) {
+      return '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + title + '</title><link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet"><style>' + EXPORT_CSS + '</style></head><body><div class="doc"><div class="doc-title">' + title + '</div><div class="md">' + innerHTML + '</div></div></body></html>';
+    }
+    function exportDoc(type, fmt) {
+      const boxId = type === 'report' ? 'reportBox' : 'tutorialBox';
+      const title = (type === 'report' ? '项目评估报告' : '零基础图文教学') + (currentProject ? ' · ' + currentProject.name : '');
+      const el = $(boxId);
+      if (!el || !el.querySelector('.mod-card, h2, p')) { alert('请先生成内容再导出'); return; }
+      const inner = el.innerHTML;
+      if (fmt === 'HTML') {
+        const blob = new Blob([buildStandaloneHTML(title, inner)], { type: 'text/html;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = title.replace(/[\\/:*?"<>|]/g, '_') + '.html';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      } else {
+        const w = window.open('', '_blank');
+        if (!w) { alert('请允许本站弹出窗口以导出 PDF'); return; }
+        w.document.open(); w.document.write(buildStandaloneHTML(title, inner)); w.document.close();
+        const done = () => { try { w.focus(); w.print(); } catch (e) {} };
+        if (w.onload !== undefined) w.onload = () => setTimeout(done, 350); else setTimeout(done, 600);
+      }
+    }
+
+    // ---------- 历史仓库记录（localStorage） ----------
+    const HISTORY_KEY = 'lyp_history_v1';
+    function loadHistory() { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') || []; } catch (e) { return []; } }
+    function saveHistoryArr(arr) { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr)); } catch (e) {} }
+    function addHistoryRecord(rec) {
+      let arr = loadHistory();
+      arr = arr.filter((r) => !(r.owner === rec.owner && r.repo === rec.repo));
+      arr.unshift(rec);
+      saveHistoryArr(arr.slice(0, 50));
+      renderHistory();
+    }
+    function fmtTime(ts) {
+      try { const d = new Date(ts); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); } catch (e) { return ''; }
+    }
+    function renderHistory() {
+      const arr = loadHistory();
+      const box = $('historyBox');
+      if (!arr.length) { box.innerHTML = '<div class="mod-card-lead text-stone-400 font-sans text-sm py-10 text-center">尚无历史记录。加载过的仓库会自动出现在这里。</div>'; return; }
+      box.innerHTML = arr.map((r, i) => (
+        '<div class="mod-card flex flex-col md:flex-row md:items-center md:justify-between gap-3">' +
+          '<div class="min-w-0">' +
+            '<div class="font-serif text-base text-stone-800 truncate">📦 ' + (r.name || (r.owner+'/'+r.repo)) + '</div>' +
+            '<div class="font-sans text-xs text-stone-500 mt-1 truncate">' + (r.url||'') + '</div>' +
+            '<div class="font-sans text-xs text-stone-500 mt-1">主语言：' + (r.language||'未知') + ' · 分支：' + (r.branch||'-') + ' · 文件 ' + (r.treeCount||0) + '（已抓取 ' + (r.fileCount||0) + '） · 载入于 ' + fmtTime(r.loadedAt) + '</div>' +
+          '</div>' +
+          '<div class="flex gap-2 shrink-0">' +
+            '<button onclick="reloadFromHistory(' + i + ')" class="px-4 py-2 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🔄 重新加载</button>' +
+            '<button onclick="deleteHistory(' + i + ')" class="px-4 py-2 rounded-full font-medium text-xs transition-colors duration-300 bg-white text-red-700 border border-red-200 hover:bg-red-50">删除</button>' +
+          '</div>' +
+        '</div>'
+      )).join('');
+    }
+    function reloadFromHistory(i) {
+      const arr = loadHistory(); const r = arr[i]; if (!r) return;
+      if (!configVerified) { alert('请先在「模型配置」中验证配置成功，再重新加载仓库'); switchTab('history'); return; }
+      $('repoUrl').value = r.url;
+      switchTab('report');
+      loadRepo();
+    }
+    function deleteHistory(i) {
+      let arr = loadHistory(); arr.splice(i, 1); saveHistoryArr(arr); renderHistory();
+    }
+    function clearHistory() {
+      if (!loadHistory().length) return;
+      if (!confirm('确定清空全部历史记录？此操作不可撤销。')) return;
+      saveHistoryArr([]); renderHistory();
+    }
+    renderHistory();
 
     if (window.mermaid) { try { mermaid.initialize({ startOnLoad:false }); } catch(e){} }
   </script>
