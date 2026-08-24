@@ -72,6 +72,14 @@
     .md code, .md pre, .md pre code, code, pre, .font-mono {
       font-family: ui-monospace, 'Cascadia Code', 'Courier New', monospace !important;
     }
+    /* Token 消耗面板 */
+    .token-panel { position:fixed; right:14px; bottom:14px; z-index:40; background:#fff; border:1px solid #e7e2da; border-radius:1rem; padding:0.6rem 0.9rem; box-shadow:0 8px 24px -14px rgba(92,64,51,0.32); font-size:0.74rem; color:#57534e; min-width:170px; line-height:1.5; }
+    .tp-title { font-weight:700; margin-bottom:0.3rem; color:#44403c; }
+    .tp-row { display:flex; justify-content:space-between; gap:0.8rem; margin:0.12rem 0; }
+    .tp-row span:first-child { color:#a8a29e; }
+    .tp-reset { display:inline-block; margin-top:0.35rem; font-size:0.68rem; color:#a8a29e; cursor:pointer; }
+    .tp-reset:hover { color:#57534e; }
+    @media (max-width:640px){ .token-panel{ right:8px; bottom:8px; min-width:150px; font-size:0.68rem; } }
   </style>
 </head>
 <body class="paper-grain">
@@ -260,6 +268,15 @@
     </footer>
   </div>
 
+  <!-- Token 消耗面板 -->
+  <div id="tokenPanel" class="token-panel">
+    <div class="tp-title">⚡ Token 消耗</div>
+    <div class="tp-row"><span>本次</span><span id="tpLast">—</span></div>
+    <div class="tp-row"><span>累计</span><span id="tpTotal">0</span></div>
+    <div class="tp-row"><span>调用</span><span id="tpCalls">0 次</span></div>
+    <a onclick="resetTokens()" class="tp-reset">重置统计</a>
+  </div>
+
   <script>
     "use strict";
     const $ = (id) => document.getElementById(id);
@@ -271,7 +288,10 @@
     const GH = 'https://api.github.com';
     const MAX_FILE_SIZE = 300 * 1024;
     const MAX_CONTENT_FILES = 220;
-    const CONTEXT_BUDGET = 64000;
+    const CONTEXT_BUDGET_EVAL = 30000;     // 评估：精简上下文（README+清单+取样），省 token 提速
+    const CONTEXT_BUDGET_TUTORIAL = 44000;  // 教学：稍大，保证讲解细节
+    const MAX_PER_FILE_EVAL = 3000;
+    const MAX_PER_FILE_TUTORIAL = 5000;
     const TEXT_EXT = new Set(['js','jsx','ts','tsx','mjs','cjs','py','go','rs','java','kt','c','cpp','h','hpp','cs','php','rb','swift','scala','sh','bash','zsh','ps1','sql','html','htm','css','scss','sass','less','vue','svelte','json','yaml','yml','toml','ini','cfg','conf','xml','md','markdown','txt','rst','tex','dockerfile','makefile','gradle','lock','env','gitignore','editorconfig','csv','log','graphql','proto','r','dart','ex','exs','elm','clj','lisp']);
     const BINARY_EXT = new Set(['png','jpg','jpeg','gif','bmp','svg','ico','webp','mp3','mp4','wav','ogg','avi','mov','zip','gz','tar','rar','7z','pdf','doc','docx','xls','xlsx','ppt','pptx','exe','dll','so','dylib','bin','dat','woff','woff2','ttf','eot','otf','wasm','class','jar','pyc','node','o','a','lib','db','sqlite','sqlite3','bak','idx','pack']);
     const NO_EXT_TEXT = new Set(['readme','license','licence','copying','authors','changelog','contributing','news','notice','makefile','dockerfile','procfile','gemfile','rakefile','vagrantfile','build','install','configure','manifest','keep','gitattributes','editorconfig']);
@@ -331,12 +351,13 @@
     setRepoEnabled(false);
 
     // ---------- LLM 直连 ----------
-    async function callLLM({ apiKey, baseURL, model, messages, temperature=0.6, max_tokens=null, timeout=120000 }) {
+    async function callLLM({ apiKey, baseURL, model, messages, temperature=0.6, max_tokens=null, timeout=120000, stream=false, onToken=null }) {
       if (!apiKey) throw new Error('缺少 API Key');
       if (!baseURL) throw new Error('缺少基地址');
       const url = baseURL.replace(/\/+$/,'') + '/chat/completions';
       const body = { model: model||'gpt-4o-mini', messages, temperature };
       if (max_tokens) body.max_tokens = max_tokens;
+      if (stream) { body.stream = true; body.stream_options = { include_usage: true }; }
       const ac = new AbortController();
       const t = setTimeout(()=>ac.abort(), timeout);
       try {
@@ -346,10 +367,68 @@
           try { const j = await res.json(); if (j && j.error && j.error.message) msg += ' — ' + j.error.message; } catch(e){}
           throw new Error('LLM 请求失败：'+msg);
         }
-        const data = await res.json();
-        return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+        if (!stream) {
+          const data = await res.json();
+          const content = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+          return { content, usage: data.usage || null };
+        }
+        // 流式 SSE
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '', content = '', usage = null;
+        const flush = () => {
+          let idx;
+          while ((idx = buf.indexOf('\n\n')) >= 0) {
+            const evt = buf.slice(0, idx); buf = buf.slice(idx+2);
+            for (const line of evt.split('\n')) {
+              const s = line.trim();
+              if (!s.startsWith('data:')) continue;
+              const d = s.slice(5).trim();
+              if (d === '[DONE]' || !d) continue;
+              try {
+                const j = JSON.parse(d);
+                const delta = (j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content) || '';
+                if (delta) { content += delta; if (onToken) { try { onToken(content); } catch(e){} } }
+                if (j.usage) usage = j.usage;
+              } catch(e){}
+            }
+          }
+        };
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream:true }); flush();
+        }
+        flush();
+        if (!usage) {
+          const est = (s) => Math.max(1, Math.ceil((s||'').length / 1.8));
+          usage = { prompt_tokens: est(JSON.stringify(messages)), completion_tokens: est(content), total_tokens: 0, _estimated: true };
+          usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+        }
+        return { content, usage };
       } finally { clearTimeout(t); }
     }
+
+    // ---------- Token 消耗统计 ----------
+    const TOKEN_KEY = 'lyp_tokens_v1';
+    function loadTokens() { try { return JSON.parse(localStorage.getItem(TOKEN_KEY) || 'null') || { prompt:0, completion:0, total:0, calls:0, last:null }; } catch(e) { return { prompt:0, completion:0, total:0, calls:0, last:null }; } }
+    function saveTokens(t) { try { localStorage.setItem(TOKEN_KEY, JSON.stringify(t)); } catch(e){} }
+    let tokenState = loadTokens();
+    function fmtNum(n) { return (n||0).toLocaleString('zh-CN'); }
+    function recordUsage(usage) {
+      if (!usage) return;
+      const p = usage.prompt_tokens || 0, c = usage.completion_tokens || 0, tot = usage.total_tokens || (p + c);
+      tokenState.prompt += p; tokenState.completion += c; tokenState.total += tot; tokenState.calls += 1;
+      tokenState.last = { prompt: p, completion: c, total: tot, estimated: !!usage._estimated };
+      saveTokens(tokenState); renderTokens();
+    }
+    function renderTokens() {
+      const last = tokenState.last;
+      $('tpLast').textContent = last ? (fmtNum(last.total) + (last.estimated ? ' (估)' : '') + ' ｜ 入' + fmtNum(last.prompt) + ' 出' + fmtNum(last.completion)) : '—';
+      $('tpTotal').textContent = fmtNum(tokenState.total) + ' ｜ 入' + fmtNum(tokenState.prompt) + ' 出' + fmtNum(tokenState.completion);
+      $('tpCalls').textContent = tokenState.calls + ' 次';
+    }
+    function resetTokens() { tokenState = { prompt:0, completion:0, total:0, calls:0, last:null }; saveTokens(tokenState); renderTokens(); }
 
     async function testConfig() {
       const cfg = getConfig();
@@ -357,7 +436,8 @@
       const btn = $('testBtn'); btn.disabled = true;
       $('cfgStatus').innerHTML = '<span class="inline-flex items-center gap-2"><span class="spinner spinner-dark"></span>正在验证连接…</span>';
       try {
-        const reply = await callLLM({ apiKey:cfg.apiKey, baseURL:cfg.baseURL, model:cfg.model, temperature:0, max_tokens:16, timeout:25000, messages:[{role:'user',content:'用一句话回复：ok'}] });
+        const { content: reply, usage } = await callLLM({ apiKey:cfg.apiKey, baseURL:cfg.baseURL, model:cfg.model, temperature:0, max_tokens:16, timeout:25000, messages:[{role:'user',content:'用一句话回复：ok'}] });
+        recordUsage(usage);
         configVerified = true; setRepoEnabled(true);
         $('cfgStatus').textContent = '✅ 配置可用';
         $('cfgStatus').className = 'font-sans text-sm text-[#7a6a3f]';
@@ -552,14 +632,17 @@
     }
 
     // ---------- 上下文打包 ----------
-    function buildContextBundle(project) {
+    // budget/maxPerFile 可调；为省 token，代码类文件只取头部取样（够看结构/命名/模式），文档与清单给全
+    function buildContextBundle(project, budget, maxPerFile) {
+      budget = budget || CONTEXT_BUDGET_TUTORIAL;
+      maxPerFile = maxPerFile || MAX_PER_FILE_TUTORIAL;
       const lines = [];
       lines.push('# 项目：'+project.name);
       if (project.description) lines.push('描述：'+project.description);
       if (project.language) lines.push('主语言：'+project.language);
       lines.push('文件总数：'+project.tree.length+'（已加载内容 '+project.files.length+' 个）');
       lines.push(''); lines.push('## 目录结构（文件清单）'); lines.push('```'); lines.push(project.tree.slice(0,1200).join('\n')); lines.push('```'); lines.push('');
-      const budget = CONTEXT_BUDGET - lines.join('\n').length;
+      const budgetLeft = budget - lines.join('\n').length;
       let used = 0;
       const priority = (p) => {
         const b = p.split('/').pop().toLowerCase();
@@ -571,13 +654,15 @@
         return 4;
       };
       const ordered = [...project.files].sort((a,b)=>priority(a.path)-priority(b.path) || b.size-a.size);
-      const MAX_PER_FILE = 6000;
       for (const f of ordered) {
-        if (used >= budget) break;
-        const take = Math.min(f.content.length, MAX_PER_FILE);
+        if (used >= budgetLeft) break;
+        // 文档/配置类给全（受 maxPerFile 上限），代码类只取头部取样
+        const isCode = priority(f.path) === 4;
+        const cap = isCode ? Math.min(maxPerFile, 2200) : maxPerFile;
+        const take = Math.min(f.content.length, cap);
         const snippet = f.content.slice(0, take);
         const block = '\n## 文件：'+f.path+'\n```\n'+snippet+'\n```\n';
-        if (used + block.length > budget) break;
+        if (used + block.length > budgetLeft) break;
         lines.push(block); used += block.length;
       }
       return lines.join('\n');
@@ -663,19 +748,31 @@
       const box = type === 'evaluate' ? $('reportBox') : $('tutorialBox');
       const tab = type === 'evaluate' ? 'report' : 'tutorial';
       switchTab(tab);
-      box.innerHTML = '<div class="flex items-center gap-3 text-stone-600"><span class="spinner spinner-dark"></span>大模型正在研读项目，生成中…（视项目大小约 20–90 秒）</div>';
+      const isEval = type === 'evaluate';
+      box.innerHTML = '<div class="flex items-center gap-3 text-stone-600"><span class="spinner spinner-dark"></span>大模型正在研读项目，流式生成中…</div>';
+      const controller = new AbortController(); // 仅用于占位/超时由 callLLM 内部处理
+      let live = '', renderTimer = null;
+      const renderLive = () => {
+        renderTimer = null;
+        try { box.innerHTML = renderMD(live); box.classList.add('md'); } catch(e){}
+      };
       try {
-        const ctx = buildContextBundle(currentProject);
-        const content = await callLLM({
+        const ctx = buildContextBundle(currentProject, isEval ? CONTEXT_BUDGET_EVAL : CONTEXT_BUDGET_TUTORIAL, isEval ? MAX_PER_FILE_EVAL : MAX_PER_FILE_TUTORIAL);
+        const { content, usage } = await callLLM({
           apiKey: cfg.apiKey, baseURL: cfg.baseURL, model: cfg.model,
-          temperature: type === 'evaluate' ? 0.5 : 0.7, timeout: 180000,
+          temperature: isEval ? 0.5 : 0.7, max_tokens: isEval ? 6000 : 7000, timeout: 180000,
+          stream: true,
+          onToken: (c) => { live = c; if (!renderTimer) renderTimer = setTimeout(renderLive, 350); },
           messages: [
-            { role:'system', content: type === 'evaluate' ? EVAL_PROMPT : TUTORIAL_PROMPT },
+            { role:'system', content: isEval ? EVAL_PROMPT : TUTORIAL_PROMPT },
             { role:'user', content: '以下是项目内容：\n\n' + ctx },
           ],
         });
+        if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
+        recordUsage(usage);
         mountMD(box, content);
       } catch (e) {
+        if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
         const msg = e.name === 'AbortError' ? '请求超时（180秒），请检查网络或减小项目规模后重试。' : e.message;
         box.innerHTML = '<p class="text-red-700 font-sans">❌ ' + msg + '</p>';
       }
@@ -734,23 +831,36 @@
       placeholder.className = 'fade-in flex justify-start';
       placeholder.innerHTML = '<div class="max-w-[85%] px-5 py-3 rounded-[1.5rem] bg-white border border-stone-200 text-stone-500 rounded-bl-md flex items-center gap-2"><span class="spinner spinner-dark"></span>检索项目中…</div>';
       $('chatLog').appendChild(placeholder);
-      const ac = new AbortController(); const ct = setTimeout(()=>ac.abort(), 90000);
       try {
         const chunks = retrieve(currentProject.index, q, 6);
-        if (chunks.length === 0) { clearTimeout(ct); placeholder.remove(); addChatBubble('assistant', '在项目内容中未找到相关信息（可能是文件未被加载，或问题超出已抓取范围）。', []); return; }
+        if (chunks.length === 0) { placeholder.remove(); addChatBubble('assistant', '在项目内容中未找到相关信息（可能是文件未被加载，或问题超出已抓取范围）。', []); return; }
         const ctx = chunks.map((c)=>'文件：'+c.path+'\n```\n'+c.text+'\n```').join('\n\n');
-        const answer = await callLLM({
-          apiKey: cfg.apiKey, baseURL: cfg.baseURL, model: cfg.model, temperature: 0.3, timeout: 60000,
+        placeholder.remove();
+        const wrap = document.createElement('div');
+        wrap.className = 'fade-in flex justify-start';
+        const inner = document.createElement('div');
+        inner.className = 'max-w-[85%] px-5 py-3 rounded-[1.5rem] bg-white border border-stone-200 text-stone-700 rounded-bl-md';
+        const body = document.createElement('div'); body.className = 'md text-sm'; inner.appendChild(body);
+        wrap.appendChild(inner); $('chatLog').appendChild(wrap);
+        let live = '', rt = null;
+        const flush = () => { rt = null; try { body.innerHTML = renderMD(live); } catch(e){} };
+        const { content, usage } = await callLLM({
+          apiKey: cfg.apiKey, baseURL: cfg.baseURL, model: cfg.model, temperature: 0.3, max_tokens: 2000, timeout: 60000, stream: true,
+          onToken: (c) => { live = c; if (!rt) rt = setTimeout(flush, 300); },
           messages: [
             { role:'system', content: ASK_PROMPT },
             { role:'user', content: '【项目内容摘录】\n'+ctx+'\n\n【问题】'+q },
           ],
         });
-        clearTimeout(ct); placeholder.remove();
-        addChatBubble('assistant', answer, chunks.map((c)=>c.path));
+        if (rt) { clearTimeout(rt); rt = null; }
+        recordUsage(usage);
+        body.innerHTML = renderMD(content);
+        const s = document.createElement('p'); s.className = 'font-sans text-xs text-stone-400 mt-2';
+        s.textContent = '📎 参考：' + [...new Set(chunks.map((c)=>c.path))].slice(0,5).join(' · '); inner.appendChild(s);
+        $('chatLog').scrollTop = $('chatLog').scrollHeight;
       } catch (e) {
-        clearTimeout(ct); placeholder.remove();
-        const msg = e.name === 'AbortError' ? '请求超时（90秒），请检查网络或 API 可用性。' : e.message;
+        placeholder.remove();
+        const msg = e.name === 'AbortError' ? '请求超时（60秒），请检查网络或 API 可用性。' : e.message;
         addChatBubble('assistant', '❌ ' + msg);
       }
     }
@@ -830,6 +940,7 @@
       saveHistoryArr([]); renderHistory();
     }
     renderHistory();
+    renderTokens();
 
     if (window.mermaid) { try { mermaid.initialize({ startOnLoad:false }); } catch(e){} }
   </script>
