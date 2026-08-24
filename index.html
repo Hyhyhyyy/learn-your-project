@@ -322,6 +322,20 @@
     }
     setReady(false);
 
+    // 生成/问答进行中的忙碌锁：禁用所有操作按钮，杜绝重复点击引发并发流式与卡顿
+    let busy = false;
+    function setBusy(on) {
+      busy = on;
+      const ids = ['btnEval','btnTut','btnAsk'];
+      if (on) {
+        ids.forEach((id) => { const b = $(id); b.disabled = true; b.classList.add('opacity-60'); b.style.cursor = 'wait'; });
+        const ci = $('chatInput'); ci.disabled = true;
+      } else {
+        setReady(projectReady);
+        ids.forEach((id) => { $(id).style.cursor = ''; });
+      }
+    }
+
     // 配置门控
     const repoEls = ['repoUrl','ghToken','loadBtn'].map($);
     function setRepoEnabled(on) { repoEls.forEach((el)=>{el.disabled=!on;}); $('repoInputs').classList.toggle('opacity-60',!on); $('repoLockBanner').classList.toggle('hidden',on); }
@@ -774,10 +788,12 @@
 
     // ---------- 生成 / 问答 ----------
     async function generate(type) {
+      if (busy) return; // 进行中则忽略重复点击
       const cfg = getConfig();
       if (!currentProject) { alert('请先加载仓库'); return; }
       if (!projectReady) { alert('项目仍在加载，请等「已载入完成」后再生成'); return; }
       if (!cfg.apiKey || !cfg.baseURL) { alert('请先在「模型配置」中填写 API Key 与基地址'); return; }
+      setBusy(true);
       const box = type === 'evaluate' ? $('reportBox') : $('tutorialBox');
       const tab = type === 'evaluate' ? 'report' : 'tutorial';
       switchTab(tab);
@@ -820,6 +836,8 @@
         done = true;
         const msg = e.name === 'AbortError' ? '请求超时（180秒），请检查网络或减小项目规模后重试。' : e.message;
         box.innerHTML = '<p class="text-red-700 font-sans">❌ ' + msg + '</p>';
+      } finally {
+        setBusy(false);
       }
     }
 
@@ -865,12 +883,14 @@
     }
 
     async function sendQuestion() {
+      if (busy) return; // 进行中则忽略重复点击
       const cfg = getConfig();
       const q = $('chatInput').value.trim();
       if (!q) return;
       if (!currentProject) { alert('请先加载仓库'); return; }
       if (!projectReady) { alert('项目仍在加载，请等「已载入完成」后再提问'); return; }
       if (!cfg.apiKey || !cfg.baseURL) { alert('请先填写 API Key 与基地址'); return; }
+      setBusy(true);
       addChatBubble('user', q); $('chatInput').value = '';
       const placeholder = document.createElement('div');
       placeholder.className = 'fade-in flex justify-start';
@@ -922,6 +942,8 @@
         placeholder.remove();
         const msg = e.name === 'AbortError' ? '请求超时（60秒），请检查网络或 API 可用性。' : e.message;
         addChatBubble('assistant', '❌ ' + msg);
+      } finally {
+        setBusy(false);
       }
     }
 
