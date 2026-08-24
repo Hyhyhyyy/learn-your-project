@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>学习你的项目 · 面向 VIBE CODING 的项目学习助手</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root { --cream:#faf6f1; --stone:#5c4033; --sage:#8b9d77; --tan:#d4a373; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Noto Sans SC', system-ui, sans-serif;
+      color: #44403c;
+      background-color: var(--cream);
+      background-image:
+        radial-gradient(circle at 20% 15%, rgba(139,157,119,0.06), transparent 40%),
+        radial-gradient(circle at 85% 80%, rgba(212,163,115,0.07), transparent 45%);
+      background-attachment: fixed;
+    }
+    h1,h2,h3,h4,.font-serif { font-family: 'Noto Serif SC', Georgia, serif; }
+    .paper-grain::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none; opacity: 0.04; z-index: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+    .blob { border-radius: 42% 58% 63% 37% / 45% 38% 62% 55%; }
+    .blob-2 { border-radius: 63% 37% 41% 59% / 52% 58% 42% 48%; }
+    .organic-shadow { box-shadow: 0 10px 30px -18px rgba(92,64,51,0.35); }
+    .fade-in { animation: fadeIn 0.6s ease-in-out both; }
+    @keyframes fadeIn { from { opacity:0; transform: translateY(8px);} to {opacity:1; transform:none;} }
+    .spinner { width:18px;height:18px;border:2px solid rgba(250,246,241,0.4);border-top-color:#faf6f1;border-radius:50%;animation:spin 0.8s linear infinite; }
+    .spinner-dark { border-color: rgba(92,64,51,0.25); border-top-color:#5c4033; }
+    @keyframes spin { to { transform: rotate(360deg);} }
+    /* markdown 排版 */
+    .md h1 { font-size:1.75rem; font-family:'Noto Serif SC',serif; margin:0.5rem 0 1rem; color:#44403c; }
+    .md h2 { font-size:1.4rem; font-family:'Noto Serif SC',serif; margin:0 0 0.75rem; color:#44403c; border-bottom:1px solid #e7e2da; padding-bottom:0.5rem; }
+    .md h3 { font-size:1.15rem; font-family:'Noto Serif SC',serif; margin:1rem 0 0.5rem; color:#57534e; }
+    .md p { margin:0.75rem 0; line-height:1.75; color:#57534e; }
+    .md ul { list-style:disc; padding-left:1.5rem; margin:0.75rem 0; }
+    .md ol { list-style:decimal; padding-left:1.5rem; margin:0.75rem 0; }
+    .md li { margin:0.25rem 0; color:#57534e; }
+    /* 模块卡片 */
+    .mod-card { background:#fff; border:1px solid #e7e2da; border-radius:1.5rem; padding:1.25rem 1.5rem 1.5rem; margin:0 0 1.75rem; box-shadow:0 8px 24px -18px rgba(92,64,51,0.28); }
+    .mod-card-lead { background:transparent; border:none; box-shadow:none; padding:0; margin-bottom:1.25rem; }
+    /* 链接三态：未点击 / 可点击 / 点击过 */
+    .md a { display:inline-block; margin:3px 6px; padding:1px 7px; border-radius:0.6rem; text-decoration:none; transition:all .2s ease; font-weight:500; }
+    .md a:link { color:#4f6e3e; background:rgba(139,157,119,0.14); border-bottom:2px solid #8b9d77; }
+    .md a:visited { color:#8a6a3a; background:rgba(212,163,115,0.12); border-bottom:2px dashed #d4a373; }
+    .md a:hover { color:#34522a; background:rgba(139,157,119,0.26); transform:translateY(-1px); }
+    .md code { background:#f5f1ea; color:#57534e; padding:0.1rem 0.4rem; border-radius:0.4rem; font-size:0.85rem; font-family:ui-monospace,monospace; }
+    .md pre { background:#292524; color:#f5f1ea; border-radius:1.25rem; padding:1rem; margin:1rem 0; overflow-x:auto; font-size:0.85rem; }
+    .md pre code { background:transparent; color:#f5f1ea; padding:0; }
+    .md blockquote { border-left:4px solid #d4a373; padding-left:1rem; margin:1rem 0; color:#78716c; font-style:italic; }
+    .md table { width:100%; margin:1rem 0; border-collapse:collapse; font-size:0.85rem; }
+    .md th, .md td { border:1px solid #e7e2da; padding:0.5rem 0.75rem; text-align:left; }
+    .md th { background:#f5f1ea; color:#44403c; }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+      html { scroll-behavior: auto; }
+    }
+  </style>
+</head>
+<body class="paper-grain">
+  <div class="relative z-10">
+
+    <nav class="bg-[#faf6f1]/90 backdrop-blur sticky top-0 z-20 text-stone-800 border-b border-stone-200 px-6 md:px-12">
+      <div class="flex items-center justify-between max-w-6xl mx-auto gap-6 md:gap-8 py-4">
+        <a href="#" class="font-serif text-xl md:text-2xl flex items-center gap-2">
+          <span class="inline-block w-8 h-8 blob bg-[#8b9d77]"></span>
+          学习你的项目
+        </a>
+        <div class="hidden md:flex gap-6 md:gap-8 font-sans text-xs text-stone-600">
+          <a href="#config" class="hover:text-[#8b9d77] transition-colors duration-300">模型配置</a>
+          <a href="#repo" class="hover:text-[#8b9d77] transition-colors duration-300">加载仓库</a>
+          <a href="#workspace" class="hover:text-[#8b9d77] transition-colors duration-300">学习空间</a>
+        </div>
+      </div>
+    </nav>
+
+    <section class="relative bg-[#8b9d77] text-stone-800 py-16 md:py-24 px-6 md:px-12 overflow-hidden">
+      <div class="absolute -top-10 -right-10 w-48 h-48 blob-2 bg-[#d4a373]/40"></div>
+      <div class="absolute -bottom-16 -left-12 w-56 h-56 blob bg-[#faf6f1]/30"></div>
+      <div class="relative max-w-4xl mx-auto text-center">
+        <p class="font-sans text-sm tracking-wide text-stone-700 mb-4">🌿 在 VIBE CODING 盛行的时代，真正读懂一个项目</p>
+        <h1 class="font-serif text-4xl md:text-5xl lg:text-6xl text-stone-800 leading-tight">把任意 GitHub 仓库<br/>变成可阅读、可学习、可问答的知识库</h1>
+        <p class="font-sans text-sm md:text-base max-w-2xl mx-auto mt-6 text-stone-700">
+          纯静态、零后端。配置大模型 API，粘贴仓库地址，一键生成评估报告与零基础图文教学，并以项目本身为知识库精准问答。密钥仅存于你的浏览器。
+        </p>
+        <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
+          <a href="#config" class="px-6 py-3 rounded-full font-medium transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">开始配置</a>
+          <a href="#repo" class="px-6 py-3 rounded-full font-medium transition-colors duration-300 bg-transparent text-stone-800 border border-stone-600 hover:bg-stone-100">加载我的仓库</a>
+        </div>
+      </div>
+    </section>
+
+    <main class="max-w-6xl mx-auto px-6 md:px-12 py-16 md:py-24 space-y-12 md:space-y-16">
+
+      <section id="config" class="scroll-mt-24">
+        <div class="bg-[#faf6f1] rounded-[2rem] border border-stone-200 p-6 md:p-8 organic-shadow">
+          <h2 class="font-serif text-2xl md:text-3xl text-stone-800 mb-2">① 配置大模型 API</h2>
+          <p class="font-sans text-sm text-stone-600 mb-6">支持任意 OpenAI 兼容接口（需允许浏览器跨域 CORS）。密钥仅存于本机浏览器，不会上传到任何服务器。</p>
+          <div class="space-y-2 mb-6">
+            <label class="block font-sans text-sm text-stone-700">服务商预设</label>
+            <select id="provider" class="w-full md:w-2/3 px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300">
+              <option value="custom">自定义 / 其他</option>
+              <option value="bailian">阿里云百炼 / 通义（国内）</option>
+              <option value="bailian_intl">阿里云百炼（国际站 / 海外）</option>
+              <option value="deepseek">DeepSeek</option>
+              <option value="moonshot">Moonshot（Kimi）</option>
+              <option value="zhipu">智谱 GLM</option>
+              <option value="hunyuan">腾讯混元</option>
+              <option value="ollama">Ollama（本地）</option>
+              <option value="openai">OpenAI（需梯子）</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+            <div class="space-y-2">
+              <label class="block font-sans text-sm text-stone-700">API Key</label>
+              <input id="apiKey" type="password" autocomplete="off" class="w-full px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300" placeholder="sk-..." />
+            </div>
+            <div class="space-y-2">
+              <label class="block font-sans text-sm text-stone-700">模型名称</label>
+              <input id="model" type="text" list="modelList" class="w-full px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300" placeholder="qwen-plus / deepseek-chat / gpt-4o-mini" />
+              <datalist id="modelList"></datalist>
+            </div>
+            <div class="space-y-2 md:col-span-2">
+              <label class="block font-sans text-sm text-stone-700">基地址（Base URL）</label>
+              <input id="baseURL" type="text" class="w-full px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
+            </div>
+          </div>
+          <p class="font-sans text-xs text-stone-500 mt-4">💡 浏览器会自动使用你的系统代理，无需单独配置。例如百炼：基地址 <code class="bg-stone-100 px-1 rounded">https://dashscope.aliyuncs.com/compatible-mode/v1</code>，模型 <code class="bg-stone-100 px-1 rounded">qwen-plus</code>。</p>
+          <div class="mt-6 flex items-center gap-4 flex-wrap">
+            <button id="testBtn" onclick="testConfig()" class="px-6 py-3 rounded-full font-medium transition-colors duration-300 bg-transparent text-stone-800 border border-stone-300 hover:bg-stone-100">🔌 验证配置</button>
+            <span id="cfgStatus" class="font-sans text-sm text-stone-500">尚未验证</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="repo" class="scroll-mt-24">
+        <div class="bg-[#faf6f1] rounded-[2rem] border border-stone-200 p-6 md:p-8 organic-shadow">
+          <h2 class="font-serif text-2xl md:text-3xl text-stone-800 mb-2">② 加载你的 GitHub 仓库</h2>
+          <p class="font-sans text-sm text-stone-600 mb-6">直接通过 GitHub API 在浏览器内拉取（已支持跨域）。私有仓库可填 Token。</p>
+          <div id="repoLockBanner" class="mb-6 px-5 py-3 rounded-[1.25rem] bg-[#d4a373]/15 text-stone-700 font-sans text-sm flex items-center gap-2">
+            🔒 请先在上方「验证配置」成功后再加载仓库
+          </div>
+          <div id="repoInputs" class="opacity-60">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 items-end">
+            <div class="space-y-2 md:col-span-2">
+              <label class="block font-sans text-sm text-stone-700">仓库地址</label>
+              <input id="repoUrl" type="text" disabled class="w-full px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300" placeholder="https://github.com/owner/repo" />
+            </div>
+            <div class="space-y-2">
+              <label class="block font-sans text-sm text-stone-700">GitHub Token（可选）</label>
+              <input id="ghToken" type="password" autocomplete="off" disabled class="w-full px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300" placeholder="ghp_..." />
+            </div>
+          </div>
+          <div class="mt-6 flex items-center gap-4 flex-wrap">
+            <button id="loadBtn" onclick="loadRepo()" disabled class="px-6 py-3 rounded-full font-medium transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🌱 加载仓库</button>
+            <span id="repoStatus" class="font-sans text-sm text-stone-600"></span>
+          </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="workspace" class="scroll-mt-24 hidden">
+        <div class="bg-[#faf6f1] rounded-[2rem] border border-stone-200 p-6 md:p-8 organic-shadow">
+          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+            <div>
+              <h2 class="font-serif text-2xl md:text-3xl text-stone-800">③ 学习空间</h2>
+              <p id="projMeta" class="font-sans text-sm text-stone-600 mt-1"></p>
+            </div>
+            <div class="flex flex-wrap gap-4 md:gap-6">
+              <button id="btnEval" onclick="generate('evaluate')" disabled class="px-6 py-3 rounded-full font-medium transition-colors duration-300 bg-stone-300 text-stone-500 cursor-not-allowed">📊 生成评估报告</button>
+              <button id="btnTut" onclick="generate('tutorial')" disabled class="px-6 py-3 rounded-full font-medium transition-colors duration-300 bg-stone-300 text-stone-500 cursor-not-allowed">📚 生成零基础教学</button>
+            </div>
+          </div>
+
+          <div class="flex gap-2 border-b border-stone-200 mb-6 flex-wrap">
+            <button data-tab="report" onclick="switchTab('report')" class="tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 bg-stone-800 text-stone-50">评估报告</button>
+            <button data-tab="tutorial" onclick="switchTab('tutorial')" class="tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 bg-transparent text-stone-600 border border-stone-300 hover:bg-stone-100">图文教学</button>
+            <button data-tab="chat" onclick="switchTab('chat')" class="tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 bg-transparent text-stone-600 border border-stone-300 hover:bg-stone-100">项目问答</button>
+          </div>
+
+          <div id="tab-report" class="tab-pane">
+            <div id="reportBox" class="md max-w-none"><div class="mod-card-lead text-stone-400 font-sans text-sm py-10 text-center">👆 点击上方「📊 生成评估报告」开始</div></div>
+          </div>
+
+          <div id="tab-tutorial" class="tab-pane hidden">
+            <div id="tutorialBox" class="md max-w-none"><div class="mod-card-lead text-stone-400 font-sans text-sm py-10 text-center">👆 点击上方「📚 生成零基础教学」开始</div></div>
+          </div>
+
+          <div id="tab-chat" class="tab-pane hidden">
+            <div id="chatLog" class="space-y-4 mb-4 max-h-[460px] overflow-y-auto pr-2"></div>
+            <div class="flex gap-3 items-end">
+              <input id="chatInput" type="text" disabled onkeydown="if(event.key==='Enter')sendQuestion()" class="flex-1 px-5 py-3 bg-stone-100 border border-stone-200 rounded-full text-stone-400 placeholder:text-stone-300 transition-all duration-300" placeholder="加载完成后即可提问…" />
+              <button id="btnAsk" onclick="sendQuestion()" disabled class="px-6 py-3 rounded-full font-medium transition-colors duration-300 bg-stone-300 text-stone-500 cursor-not-allowed whitespace-nowrap">发送</button>
+            </div>
+            <p class="font-sans text-xs text-stone-500 mt-3">问答基于已加载的项目文件做本地检索后交由大模型回答，引用真实文件路径。</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="bg-white text-stone-600 py-16 md:py-20 px-6 md:px-12 border-t border-stone-200">
+      <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
+        <div>
+          <span class="font-serif text-xl md:text-2xl text-stone-800 flex items-center gap-2">
+            <span class="inline-block w-7 h-7 blob bg-[#8b9d77]"></span>学习你的项目
+          </span>
+          <p class="font-sans text-xs mt-3 leading-relaxed">面向 VIBE CODING 的纯静态项目学习助手。无后端、密钥不离浏览器。</p>
+        </div>
+        <div>
+          <h4 class="font-serif text-lg text-stone-800 mb-3">三步上手</h4>
+          <ul class="font-sans text-xs space-y-2">
+            <li>① 配置 OpenAI 兼容的大模型 API</li>
+            <li>② 粘贴 GitHub 仓库并加载</li>
+            <li>③ 生成报告 / 教学，或直接问答</li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="font-serif text-lg text-stone-800 mb-3">说明</h4>
+          <p class="font-sans text-xs leading-relaxed">教学中的外链（GitHub / 官网 / B 站）由大模型依据技术栈生成，使用前请自行核实。</p>
+        </div>
+      </div>
+      <p class="max-w-6xl mx-auto font-sans text-xs text-stone-400 mt-10">🌿 自然有机风 · 纯静态 · 隐私友好</p>
+    </footer>
+  </div>
+
+  <script>
+    "use strict";
+    const $ = (id) => document.getElementById(id);
+    let currentProject = null;   // { name, owner, repo, branch, tree[], files[], description, language, index }
+    let projectReady = false;
+    let configVerified = false;
+
+    // ---------- 常量 ----------
+    const GH = 'https://api.github.com';
+    const MAX_FILE_SIZE = 300 * 1024;
+    const MAX_CONTENT_FILES = 220;
+    const CONTEXT_BUDGET = 64000;
+    const TEXT_EXT = new Set(['js','jsx','ts','tsx','mjs','cjs','py','go','rs','java','kt','c','cpp','h','hpp','cs','php','rb','swift','scala','sh','bash','zsh','ps1','sql','html','htm','css','scss','sass','less','vue','svelte','json','yaml','yml','toml','ini','cfg','conf','xml','md','markdown','txt','rst','tex','dockerfile','makefile','gradle','lock','env','gitignore','editorconfig','csv','log','graphql','proto','r','dart','ex','exs','elm','clj','lisp']);
+    const BINARY_EXT = new Set(['png','jpg','jpeg','gif','bmp','svg','ico','webp','mp3','mp4','wav','ogg','avi','mov','zip','gz','tar','rar','7z','pdf','doc','docx','xls','xlsx','ppt','pptx','exe','dll','so','dylib','bin','dat','woff','woff2','ttf','eot','otf','wasm','class','jar','pyc','node','o','a','lib','db','sqlite','sqlite3','bak','idx','pack']);
+    const NO_EXT_TEXT = new Set(['readme','license','licence','copying','authors','changelog','contributing','news','notice','makefile','dockerfile','procfile','gemfile','rakefile','vagrantfile','build','install','configure','manifest','keep','gitattributes','editorconfig']);
+
+    // ---------- 工具 ----------
+    function getConfig() {
+      return { apiKey: $('apiKey').value.trim(), baseURL: $('baseURL').value.trim(), model: $('model').value.trim(), ghToken: $('ghToken').value.trim() };
+    }
+    function setStatus(el, msg, isErr) { el.textContent = msg; el.className = 'font-sans text-sm ' + (isErr ? 'text-red-700' : 'text-stone-600'); }
+
+    function setReady(on) {
+      projectReady = on;
+      const en = (b, kind) => {
+        b.disabled = !on;
+        b.className = on
+          ? (kind === 'eval' ? 'px-6 py-3 rounded-full font-medium transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700'
+             : kind === 'tut' ? 'px-6 py-3 rounded-full font-medium transition-colors duration-300 bg-[#8b9d77] text-stone-50 hover:bg-[#7a8c68]'
+             : 'px-6 py-3 rounded-full font-medium transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700 whitespace-nowrap')
+          : 'px-6 py-3 rounded-full font-medium transition-colors duration-300 bg-stone-300 text-stone-500 cursor-not-allowed' + (kind === 'ask' ? ' whitespace-nowrap' : '');
+      };
+      en($('btnEval'),'eval'); en($('btnTut'),'tut'); en($('btnAsk'),'ask');
+      const ci = $('chatInput');
+      ci.disabled = !on;
+      ci.className = on
+        ? 'flex-1 px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300'
+        : 'flex-1 px-5 py-3 bg-stone-100 border border-stone-200 rounded-full text-stone-400 placeholder:text-stone-300 transition-all duration-300';
+      ci.placeholder = on ? '就这个项目问我任何问题…' : '加载完成后即可提问…';
+    }
+    setReady(false);
+
+    // 配置门控
+    const repoEls = ['repoUrl','ghToken','loadBtn'].map($);
+    function setRepoEnabled(on) { repoEls.forEach((el)=>{el.disabled=!on;}); $('repoInputs').classList.toggle('opacity-60',!on); $('repoLockBanner').classList.toggle('hidden',on); }
+    function markConfigStale() { configVerified=false; setRepoEnabled(false); $('cfgStatus').textContent='配置已修改，请重新验证'; $('cfgStatus').className='font-sans text-sm text-stone-500'; }
+
+    const PROVIDERS = {
+      custom: { base:'', models:[] },
+      bailian: { base:'https://dashscope.aliyuncs.com/compatible-mode/v1', models:['qwen-plus','qwen-max','qwen-turbo','qwen-long','qwen2.5-72b-instruct','qwen3-32b'] },
+      bailian_intl: { base:'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', models:['qwen-plus','qwen-max','qwen-turbo','qwen2.5-72b-instruct'] },
+      deepseek: { base:'https://api.deepseek.com/v1', models:['deepseek-chat','deepseek-reasoner'] },
+      moonshot: { base:'https://api.moonshot.cn/v1', models:['moonshot-v1-8k','moonshot-v1-32k','moonshot-v1-128k'] },
+      zhipu: { base:'https://open.bigmodel.cn/api/paas/v4', models:['glm-4-plus','glm-4-air','glm-4-flash','glm-4-long'] },
+      hunyuan: { base:'https://api.hunyuan.cloud.tencent.com/v1', models:['hunyuan-pro','hunyuan-standard','hunyuan-lite','hunyuan-turbo'] },
+      ollama: { base:'http://localhost:11434/v1', models:['llama3.1','qwen2.5','deepseek-r1','mistral','gemma2'] },
+      openai: { base:'https://api.openai.com/v1', models:['gpt-4o','gpt-4o-mini','gpt-4-turbo','o3-mini'] },
+    };
+    function applyProvider() {
+      const p = $('provider').value, cfg = PROVIDERS[p];
+      if (!cfg) return;
+      if (p !== 'custom') $('baseURL').value = cfg.base;
+      $('modelList').innerHTML = (cfg.models||[]).map((m)=>'<option value="'+m+'"></option>').join('');
+      if (p !== 'custom' && cfg.models && cfg.models[0]) $('model').value = cfg.models[0];
+      markConfigStale();
+    }
+    $('provider').addEventListener('change', applyProvider);
+    ['apiKey','baseURL','model'].forEach((id)=>$(id).addEventListener('input', markConfigStale));
+    setRepoEnabled(false);
+
+    // ---------- LLM 直连 ----------
+    async function callLLM({ apiKey, baseURL, model, messages, temperature=0.6, max_tokens=null, timeout=120000 }) {
+      if (!apiKey) throw new Error('缺少 API Key');
+      if (!baseURL) throw new Error('缺少基地址');
+      const url = baseURL.replace(/\/+$/,'') + '/chat/completions';
+      const body = { model: model||'gpt-4o-mini', messages, temperature };
+      if (max_tokens) body.max_tokens = max_tokens;
+      const ac = new AbortController();
+      const t = setTimeout(()=>ac.abort(), timeout);
+      try {
+        const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey}, body: JSON.stringify(body), signal: ac.signal });
+        if (!res.ok) {
+          let msg = res.status+' '+res.statusText;
+          try { const j = await res.json(); if (j && j.error && j.error.message) msg += ' — ' + j.error.message; } catch(e){}
+          throw new Error('LLM 请求失败：'+msg);
+        }
+        const data = await res.json();
+        return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+      } finally { clearTimeout(t); }
+    }
+
+    async function testConfig() {
+      const cfg = getConfig();
+      if (!cfg.apiKey || !cfg.baseURL) { alert('请先填写 API Key 与基地址'); return; }
+      const btn = $('testBtn'); btn.disabled = true;
+      $('cfgStatus').innerHTML = '<span class="inline-flex items-center gap-2"><span class="spinner spinner-dark"></span>正在验证连接…</span>';
+      try {
+        const reply = await callLLM({ apiKey:cfg.apiKey, baseURL:cfg.baseURL, model:cfg.model, temperature:0, max_tokens:16, timeout:25000, messages:[{role:'user',content:'用一句话回复：ok'}] });
+        configVerified = true; setRepoEnabled(true);
+        $('cfgStatus').textContent = '✅ 配置可用';
+        $('cfgStatus').className = 'font-sans text-sm text-[#7a6a3f]';
+      } catch (e) {
+        configVerified = false; setRepoEnabled(false);
+        $('cfgStatus').textContent = '❌ ' + e.message;
+        $('cfgStatus').className = 'font-sans text-sm text-red-700';
+      } finally { btn.disabled = false; }
+    }
+
+    // ---------- 文件识别 ----------
+    function fileExt(p) {
+      const base = p.split('/').pop().toLowerCase();
+      if (base === 'dockerfile' || base === 'makefile' || base === 'procfile') return base;
+      if (base.startsWith('.') && base.length > 1) return base.slice(1);
+      const i = base.lastIndexOf('.');
+      return i >= 0 ? base.slice(i+1) : '';
+    }
+    function isTextFile(p) {
+      const base = p.split('/').pop().toLowerCase();
+      const ext = fileExt(p);
+      if (BINARY_EXT.has(ext)) return false;
+      if (TEXT_EXT.has(ext) || TEXT_EXT.has(base) || NO_EXT_TEXT.has(base) || NO_EXT_TEXT.has(ext)) return true;
+      if (ext === '') return NO_EXT_TEXT.has(base);
+      return false;
+    }
+    function parseRepoUrl(url) {
+      if (!url) throw new Error('仓库地址为空');
+      let u = url.trim().replace(/\.git$/,'').replace(/\/+$/,'');
+      const m = u.match(/github\.com[/:]([^/]+)\/([^/?#]+)/i);
+      if (!m) throw new Error('仅支持 GitHub 仓库地址（github.com/owner/repo）');
+      return { owner: m[1], repo: m[2] };
+    }
+    function decodeBase64UTF8(b64) {
+      try { return decodeURIComponent(escape(atob(b64))); } catch (e) { return atob(b64); }
+    }
+
+    // ---------- GitHub 拉取 ----------
+    async function ghJSON(url, token, signal) {
+      const headers = { 'Accept':'application/vnd.github+json', 'User-Agent':'learn-your-project' };
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      const res = await fetch(url, { headers, signal });
+      if (!res.ok) {
+        let msg = res.status + ' ' + res.statusText;
+        try { const j = await res.json(); if (j && j.message) msg += ' — ' + j.message; } catch(e){}
+        throw new Error('GitHub API: ' + msg);
+      }
+      return res.json();
+    }
+
+    async function fetchTreeBFS(owner, repo, branch, token, signal) {
+      const blobs = [];
+      const queue = [branch];
+      let reqs = 0;
+      while (queue.length && reqs < 600 && blobs.length < 5000) {
+        reqs++;
+        const sha = queue.shift();
+        const res = await ghJSON(GH+'/repos/'+owner+'/'+repo+'/git/trees/'+encodeURIComponent(sha), token, signal);
+        if (res.truncated) throw new Error('GitHub API tree truncated');
+        for (const item of (res.tree||[])) {
+          if (item.type === 'blob') { blobs.push(item); if (blobs.length >= 5000) break; }
+          else if (item.type === 'tree') queue.push(item.sha);
+        }
+      }
+      return blobs;
+    }
+
+    const SKIP_DIRS = new Set(['node_modules','.git','dist','build','.next','out','vendor','target','__pycache__','.venv','venv','coverage','.idea','.vscode']);
+
+    async function loadRepo() {
+      const cfg = getConfig();
+      const repoUrl = $('repoUrl').value.trim();
+      if (!repoUrl) { setStatus($('repoStatus'),'请先填写仓库地址',true); return; }
+      let owner, repo;
+      try { ({owner,repo} = parseRepoUrl(repoUrl)); } catch(e) { setStatus($('repoStatus'),e.message,true); return; }
+      const btn = $('loadBtn'); btn.disabled = true; btn.classList.add('opacity-60');
+      setReady(false);
+      const status = $('repoStatus');
+      const stages = ['正在拉取仓库元信息…','正在解析目录树…','正在抓取关键文件内容…','正在建立项目检索索引…'];
+      let si = 0;
+      status.innerHTML = '<span class="inline-flex items-center gap-2"><span class="spinner spinner-dark"></span><span id="loadStage">'+stages[0]+'</span></span>';
+      const ticker = setInterval(()=>{ si=(si+1)%stages.length; const e=$('loadStage'); if(e) e.textContent=stages[si]; }, 3500);
+      try {
+        const ac = new AbortController();
+        const timer = setTimeout(()=>ac.abort(), 180000);
+        try {
+          const meta = await ghJSON(GH+'/repos/'+owner+'/'+repo, cfg.ghToken, ac.signal);
+          const branch = meta.default_branch || 'main';
+          let blobs;
+          try {
+            const treeRes = await ghJSON(GH+'/repos/'+owner+'/'+repo+'/git/trees/'+branch+'?recursive=1', cfg.ghToken, ac.signal);
+            blobs = (treeRes.tree||[]).filter((t)=>t.type==='blob');
+          } catch (e) {
+            if (/504|timeout|timed out|truncated/i.test(e.message)) {
+              blobs = await fetchTreeBFS(owner, repo, branch, cfg.ghToken, ac.signal);
+            } else throw e;
+          }
+          const tree = blobs.map((b)=>b.path).sort();
+          const priority = (p) => {
+            const b = p.split('/').pop().toLowerCase();
+            if (/^readme/i.test(b)) return 0;
+            if (/^license|copying/i.test(b)) return 5;
+            if (['package.json','requirements.txt','pyproject.toml','go.mod','cargo.toml','pom.xml','build.gradle','gemfile','composer.json','dockerfile','makefile'].includes(b)) return 1;
+            const ext = fileExt(p);
+            if (['md','markdown','txt','rst'].includes(ext)) return 2;
+            if (['json','yaml','yml','toml','ini','conf','env','xml'].includes(ext)) return 3;
+            if (['js','ts','jsx','tsx','py','go','rs','java','c','cpp','cs','php','rb','swift','vue','svelte'].includes(ext)) return 4;
+            return 9;
+          };
+          const candidates = blobs
+            .filter((b)=> isTextFile(b.path) && (b.size||0) <= MAX_FILE_SIZE)
+            .sort((a,b)=> priority(a.path)-priority(b.path) || (b.size||0)-(a.size||0))
+            .slice(0, MAX_CONTENT_FILES);
+          // 并发抓取内容（8 并发）
+          const files = [];
+          let idx = 0;
+          async function worker() {
+            while (idx < candidates.length) {
+              const cur = candidates[idx++];
+              try {
+                const j = await ghJSON(GH+'/repos/'+owner+'/'+repo+'/contents/'+encodeURIComponent(cur.path)+'?ref='+branch, cfg.ghToken, ac.signal);
+                if (j.content) files.push({ path: cur.path, content: decodeBase64UTF8(j.content), size: cur.size });
+              } catch(e) { /* skip */ }
+            }
+          }
+          await Promise.all(Array.from({length:8}, worker));
+          const project = {
+            name: owner+'-'+repo, owner, repo, branch, tree, files,
+            description: meta.description||'', language: meta.language||'', method:'api'
+          };
+          project.index = buildIndex(project);
+          currentProject = project;
+          clearInterval(ticker);
+          status.innerHTML = '<span class="inline-flex items-center gap-2">✅ 已载入完成：'+project.name+' · 共 '+tree.length+' 个文件，已抓取内容 '+files.length+' 个（API 拉取）</span>';
+          status.className = 'font-sans text-sm text-[#7a6a3f]';
+          $('projMeta').textContent = '项目：'+project.name+' · 主语言：'+(project.language||'未知')+' · 分支：'+project.branch;
+          $('workspace').classList.remove('hidden');
+          $('workspace').scrollIntoView({ behavior:'smooth' });
+          setReady(true);
+        } finally { clearTimeout(timer); }
+      } catch (e) {
+        clearInterval(ticker);
+        setStatus($('repoStatus'), '❌ ' + e.message, true);
+      } finally { btn.disabled = false; btn.classList.remove('opacity-60'); }
+    }
+
+    // ---------- 检索（TF-IDF + 子串） ----------
+    function tokenize(text) {
+      const toks = [];
+      const re = /[a-zA-Z0-9_]{2,}/g; let m;
+      while ((m = re.exec(text)) !== null) toks.push(m[0].toLowerCase());
+      if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+        try {
+          const seg = new Intl.Segmenter('zh', { granularity:'word' });
+          for (const s of seg.segment(text)) { if (s.isWordLike) { const w = s.segment.trim(); if (w.length>=1) toks.push(w.toLowerCase()); } }
+          return toks;
+        } catch(e){}
+      }
+      const cjk = text.match(/[\u4e00-\u9fa5\u3040-\u309f\u30a0-\u30ff]/g) || [];
+      for (const c of cjk) toks.push(c);
+      return toks;
+    }
+    function buildIndex(project) {
+      const chunks = [];
+      for (const f of project.files) {
+        const text = f.content || '';
+        const step = 1400;
+        for (let i=0;i<text.length;i+=step) {
+          const c = text.slice(i,i+step);
+          if (c.trim().length < 30) continue;
+          chunks.push({ path: f.path, text: c });
+        }
+      }
+      const df = new Map();
+      const tokenized = chunks.map((ch)=>{ const t = tokenize(ch.text); const s = new Set(t); s.forEach((x)=>df.set(x,(df.get(x)||0)+1)); return t; });
+      return { chunks, tokenized, df, N: chunks.length };
+    }
+    function retrieve(index, query, topK=6) {
+      if (!index || index.N === 0) return [];
+      const qToks = tokenize(query); const qSet = new Set(qToks);
+      const idf = (t)=> Math.log((index.N+1)/((index.df.get(t)||0)+1))+1;
+      const lowQ = query.toLowerCase();
+      const scored = index.tokenized.map((toks,i)=>{
+        const counts = {}; for (const t of toks) counts[t]=(counts[t]||0)+1;
+        let score = 0;
+        for (const t of qSet) if (counts[t]) score += counts[t]*idf(t);
+        if (index.chunks[i].text.toLowerCase().includes(lowQ)) score += 6;
+        return { i, score };
+      });
+      return scored.filter((s)=>s.score>0).sort((a,b)=>b.score-a.score).slice(0,topK).map((s)=>index.chunks[s.i]);
+    }
+
+    // ---------- 上下文打包 ----------
+    function buildContextBundle(project) {
+      const lines = [];
+      lines.push('# 项目：'+project.name);
+      if (project.description) lines.push('描述：'+project.description);
+      if (project.language) lines.push('主语言：'+project.language);
+      lines.push('文件总数：'+project.tree.length+'（已加载内容 '+project.files.length+' 个）');
+      lines.push(''); lines.push('## 目录结构（文件清单）'); lines.push('```'); lines.push(project.tree.slice(0,1200).join('\n')); lines.push('```'); lines.push('');
+      const budget = CONTEXT_BUDGET - lines.join('\n').length;
+      let used = 0;
+      const priority = (p) => {
+        const b = p.split('/').pop().toLowerCase();
+        if (/^readme/i.test(b)) return 0;
+        if (['package.json','requirements.txt','pyproject.toml','go.mod','cargo.toml','pom.xml','build.gradle','gemfile','composer.json','dockerfile','makefile'].includes(b)) return 1;
+        const ext = fileExt(p);
+        if (['md','markdown','txt','rst'].includes(ext)) return 2;
+        if (['json','yaml','yml','toml','ini','conf','env'].includes(ext)) return 3;
+        return 4;
+      };
+      const ordered = [...project.files].sort((a,b)=>priority(a.path)-priority(b.path) || b.size-a.size);
+      const MAX_PER_FILE = 6000;
+      for (const f of ordered) {
+        if (used >= budget) break;
+        const take = Math.min(f.content.length, MAX_PER_FILE);
+        const snippet = f.content.slice(0, take);
+        const block = '\n## 文件：'+f.path+'\n```\n'+snippet+'\n```\n';
+        if (used + block.length > budget) break;
+        lines.push(block); used += block.length;
+      }
+      return lines.join('\n');
+    }
+
+    // ---------- Prompts ----------
+    const EVAL_PROMPT = '你是一位拥有 10 年以上经验的资深软件架构师。请基于下面提供的项目文件（目录结构 + 关键文件内容），用中文撰写一份全面、专业的项目评估报告（Markdown 格式）。要求：\n- 结构清晰、分章节，使用 ## 标题；\n- 必须覆盖：项目概览、技术栈分析、架构与目录结构、代码质量评估、文档完备度、安全性考量、核心优势、潜在不足与风险、可落地的改进建议、新手学习难度评级；\n- 尽量引用实际文件名或目录来支撑判断；\n- 末尾给出总体评分（1-10）与一句话总结；\n- 如有合适的架构关系，可用 Mermaid 流程图（```mermaid）辅助说明。';
+    const TUTORIAL_PROMPT = '你是一位耐心、亲切的编程导师。请基于下面提供的项目的技术栈与结构，为零基础学习者撰写一份"图文并茂"的入门教学（中文 Markdown）。要求：\n- 开篇给出学习路径总览（可用 Mermaid 流程图展示学习路线）；\n- 分章节讲解本项目涉及的核心概念与技术（如语言、框架、工具链、目录组织等），每章用 ## 标题，关键概念用粗体，适当使用 emoji 与列表让内容生动；\n- 每个技术点给出"这是什么 / 为什么用 / 怎么上手"三段式讲解；\n- 末尾提供【权威学习资源】清单，分类列出真实可访问的资源，格式严格如下：\n  - GitHub 仓库：使用真实存在的知名仓库（如 [freeCodeCamp](https://github.com/freeCodeCamp/freeCodeCamp)）；\n  - 官方网站：给出官方文档地址；\n  - B 站搜索：[搜索关键词](https://search.bilibili.com/all?keyword=关键词)（关键词用 URL 编码的中文或英文）；\n- 结构清晰、循序渐进，真正帮助零基础读者建立认知。';
+    const ASK_PROMPT = '你是一个基于项目知识库回答问题的助手。只能使用下面【项目内容摘录】中的信息来回答，用中文回答；如果摘录中没有相关信息，请明确说明"在项目内容中未找到相关信息"，不要编造。回答时尽量注明引用的文件路径。语言简洁、准确。';
+
+    // ---------- Markdown 渲染 ----------
+    function renderMD(md) { return DOMPurify.sanitize(marked.parse(md||'')); }
+    function wrapSections(el) {
+      const nodes = Array.from(el.childNodes); el.innerHTML = '';
+      let cur = null, lead = document.createElement('section'); lead.className = 'mod-card-lead';
+      for (const node of nodes) {
+        if (node.nodeType === 1 && node.tagName === 'H2') {
+          if (cur) el.appendChild(cur);
+          if (lead.childNodes.length) { el.appendChild(lead); lead = document.createElement('section'); lead.className = 'mod-card-lead'; }
+          cur = document.createElement('section'); cur.className = 'mod-card'; cur.appendChild(node);
+        } else if (cur) cur.appendChild(node);
+        else lead.appendChild(node);
+      }
+      if (cur) el.appendChild(cur);
+      if (lead.childNodes.length) el.appendChild(lead);
+    }
+    function mountMD(el, md) {
+      el.innerHTML = renderMD(md);
+      el.classList.add('fade-in');
+      try { wrapSections(el); } catch(e){}
+      try {
+        const nodes = el.querySelectorAll('pre code.language-mermaid');
+        if (nodes.length && window.mermaid) {
+          mermaid.initialize({ startOnLoad:false, theme:'base', themeVariables:{ primaryColor:'#faf6f1', lineColor:'#8b9d77', fontFamily:'Noto Sans SC' } });
+          nodes.forEach((n)=>{ n.removeAttribute('class'); n.classList.add('mermaid'); });
+          mermaid.run({ nodes: Array.from(el.querySelectorAll('.mermaid')) });
+        }
+      } catch(e){}
+    }
+
+    // ---------- 生成 / 问答 ----------
+    async function generate(type) {
+      const cfg = getConfig();
+      if (!currentProject) { alert('请先加载仓库'); return; }
+      if (!projectReady) { alert('项目仍在加载，请等「已载入完成」后再生成'); return; }
+      if (!cfg.apiKey || !cfg.baseURL) { alert('请先在「模型配置」中填写 API Key 与基地址'); return; }
+      const box = type === 'evaluate' ? $('reportBox') : $('tutorialBox');
+      const tab = type === 'evaluate' ? 'report' : 'tutorial';
+      switchTab(tab);
+      box.innerHTML = '<div class="flex items-center gap-3 text-stone-600"><span class="spinner spinner-dark"></span>大模型正在研读项目，生成中…（视项目大小约 20–90 秒）</div>';
+      try {
+        const ctx = buildContextBundle(currentProject);
+        const content = await callLLM({
+          apiKey: cfg.apiKey, baseURL: cfg.baseURL, model: cfg.model,
+          temperature: type === 'evaluate' ? 0.5 : 0.7, timeout: 180000,
+          messages: [
+            { role:'system', content: type === 'evaluate' ? EVAL_PROMPT : TUTORIAL_PROMPT },
+            { role:'user', content: '以下是项目内容：\n\n' + ctx },
+          ],
+        });
+        mountMD(box, content);
+      } catch (e) {
+        const msg = e.name === 'AbortError' ? '请求超时（180秒），请检查网络或减小项目规模后重试。' : e.message;
+        box.innerHTML = '<p class="text-red-700 font-sans">❌ ' + msg + '</p>';
+      }
+    }
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-pane').forEach((p)=>p.classList.add('hidden'));
+      $('tab-'+tab).classList.remove('hidden');
+      document.querySelectorAll('.tab-btn').forEach((b)=>{
+        const active = b.dataset.tab === tab;
+        b.className = 'tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 ' + (active ? 'bg-stone-800 text-stone-50' : 'bg-transparent text-stone-600 border border-stone-300 hover:bg-stone-100');
+      });
+      if (tab === 'chat') $('chatInput').focus();
+    }
+
+    function addChatBubble(role, text, sources) {
+      const wrap = document.createElement('div');
+      wrap.className = 'fade-in flex ' + (role === 'user' ? 'justify-end' : 'justify-start');
+      const inner = document.createElement('div');
+      inner.className = 'max-w-[85%] px-5 py-3 rounded-[1.5rem] ' + (role === 'user' ? 'bg-[#8b9d77] text-stone-50 rounded-br-md' : 'bg-white border border-stone-200 text-stone-700 rounded-bl-md');
+      if (role === 'user') { inner.textContent = text; }
+      else {
+        const body = document.createElement('div'); body.className = 'md text-sm'; body.innerHTML = renderMD(text); inner.appendChild(body);
+        if (sources && sources.length) {
+          const s = document.createElement('p'); s.className = 'font-sans text-xs text-stone-400 mt-2';
+          s.textContent = '📎 参考：' + [...new Set(sources)].slice(0,5).join(' · '); inner.appendChild(s);
+        }
+      }
+      wrap.appendChild(inner); $('chatLog').appendChild(wrap);
+      $('chatLog').scrollTop = $('chatLog').scrollHeight;
+    }
+
+    async function sendQuestion() {
+      const cfg = getConfig();
+      const q = $('chatInput').value.trim();
+      if (!q) return;
+      if (!currentProject) { alert('请先加载仓库'); return; }
+      if (!projectReady) { alert('项目仍在加载，请等「已载入完成」后再提问'); return; }
+      if (!cfg.apiKey || !cfg.baseURL) { alert('请先填写 API Key 与基地址'); return; }
+      addChatBubble('user', q); $('chatInput').value = '';
+      const placeholder = document.createElement('div');
+      placeholder.className = 'fade-in flex justify-start';
+      placeholder.innerHTML = '<div class="max-w-[85%] px-5 py-3 rounded-[1.5rem] bg-white border border-stone-200 text-stone-500 rounded-bl-md flex items-center gap-2"><span class="spinner spinner-dark"></span>检索项目中…</div>';
+      $('chatLog').appendChild(placeholder);
+      const ac = new AbortController(); const ct = setTimeout(()=>ac.abort(), 90000);
+      try {
+        const chunks = retrieve(currentProject.index, q, 6);
+        if (chunks.length === 0) { clearTimeout(ct); placeholder.remove(); addChatBubble('assistant', '在项目内容中未找到相关信息（可能是文件未被加载，或问题超出已抓取范围）。', []); return; }
+        const ctx = chunks.map((c)=>'文件：'+c.path+'\n```\n'+c.text+'\n```').join('\n\n');
+        const answer = await callLLM({
+          apiKey: cfg.apiKey, baseURL: cfg.baseURL, model: cfg.model, temperature: 0.3, timeout: 60000,
+          messages: [
+            { role:'system', content: ASK_PROMPT },
+            { role:'user', content: '【项目内容摘录】\n'+ctx+'\n\n【问题】'+q },
+          ],
+        });
+        clearTimeout(ct); placeholder.remove();
+        addChatBubble('assistant', answer, chunks.map((c)=>c.path));
+      } catch (e) {
+        clearTimeout(ct); placeholder.remove();
+        const msg = e.name === 'AbortError' ? '请求超时（90秒），请检查网络或 API 可用性。' : e.message;
+        addChatBubble('assistant', '❌ ' + msg);
+      }
+    }
+
+    if (window.mermaid) { try { mermaid.initialize({ startOnLoad:false }); } catch(e){} }
+  </script>
+</body>
+</html>
