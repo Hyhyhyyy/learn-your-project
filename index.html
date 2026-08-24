@@ -416,19 +416,32 @@
     let tokenState = loadTokens();
     function fmtNum(n) { return (n||0).toLocaleString('zh-CN'); }
     function recordUsage(usage) {
-      if (!usage) return;
+      if (!usage) { tokenState.live = null; renderTokens(); return; }
       const p = usage.prompt_tokens || 0, c = usage.completion_tokens || 0, tot = usage.total_tokens || (p + c);
       tokenState.prompt += p; tokenState.completion += c; tokenState.total += tot; tokenState.calls += 1;
       tokenState.last = { prompt: p, completion: c, total: tot, estimated: !!usage._estimated };
+      tokenState.live = null;
       saveTokens(tokenState); renderTokens();
     }
+    // 流式过程中的实时估算（不入累计，仅"本次"行显示，标"进行中(估)"）
+    function setLiveTokens(promptEst, completionEst) {
+      tokenState.live = { prompt: promptEst||0, completion: completionEst||0 };
+      renderTokens();
+    }
     function renderTokens() {
+      const live = tokenState.live;
       const last = tokenState.last;
-      $('tpLast').textContent = last ? (fmtNum(last.total) + (last.estimated ? ' (估)' : '') + ' ｜ 入' + fmtNum(last.prompt) + ' 出' + fmtNum(last.completion)) : '—';
+      if (live) {
+        $('tpLast').textContent = '进行中… 入≈' + fmtNum(live.prompt) + ' 出≈' + fmtNum(live.completion) + ' (估)';
+        $('tpLast').style.color = '#b45309';
+      } else {
+        $('tpLast').textContent = last ? (fmtNum(last.total) + (last.estimated ? ' (估)' : '') + ' ｜ 入' + fmtNum(last.prompt) + ' 出' + fmtNum(last.completion)) : '—';
+        $('tpLast').style.color = '';
+      }
       $('tpTotal').textContent = fmtNum(tokenState.total) + ' ｜ 入' + fmtNum(tokenState.prompt) + ' 出' + fmtNum(tokenState.completion);
       $('tpCalls').textContent = tokenState.calls + ' 次';
     }
-    function resetTokens() { tokenState = { prompt:0, completion:0, total:0, calls:0, last:null }; saveTokens(tokenState); renderTokens(); }
+    function resetTokens() { tokenState = { prompt:0, completion:0, total:0, calls:0, last:null, live:null }; saveTokens(tokenState); renderTokens(); }
 
     async function testConfig() {
       const cfg = getConfig();
@@ -750,29 +763,41 @@
       switchTab(tab);
       const isEval = type === 'evaluate';
       box.innerHTML = '<div class="flex items-center gap-3 text-stone-600"><span class="spinner spinner-dark"></span>大模型正在研读项目，流式生成中…</div>';
-      const controller = new AbortController(); // 仅用于占位/超时由 callLLM 内部处理
-      let live = '', renderTimer = null;
-      const renderLive = () => {
-        renderTimer = null;
-        try { box.innerHTML = renderMD(live); box.classList.add('md'); } catch(e){}
+      // 稳定且不卡顿的渐进渲染：rAF 对齐帧 + 最小间隔 + 增长阈值，避免对增长中的整串反复 marked.parse 造成抖动
+      let live = '', lastRender = 0, lastLen = 0, rafPending = false, done = false, promptEst = 0;
+      const scheduleRender = () => {
+        if (rafPending || done) return;
+        rafPending = true;
+        requestAnimationFrame(() => {
+          rafPending = false;
+          if (done) return;
+          const now = performance.now();
+          if (live.length - lastLen < 80 && now - lastRender < 300) { scheduleRender(); return; }
+          lastRender = now; lastLen = live.length;
+          try { box.innerHTML = renderMD(live); box.classList.add('md'); } catch(e){}
+          setLiveTokens(promptEst, Math.ceil(live.length / 1.8));
+        });
       };
       try {
         const ctx = buildContextBundle(currentProject, isEval ? CONTEXT_BUDGET_EVAL : CONTEXT_BUDGET_TUTORIAL, isEval ? MAX_PER_FILE_EVAL : MAX_PER_FILE_TUTORIAL);
+        const sysP = isEval ? EVAL_PROMPT : TUTORIAL_PROMPT;
+        const userP = '以下是项目内容：\n\n' + ctx;
+        promptEst = Math.ceil((sysP.length + userP.length) / 1.8);
         const { content, usage } = await callLLM({
           apiKey: cfg.apiKey, baseURL: cfg.baseURL, model: cfg.model,
           temperature: isEval ? 0.5 : 0.7, max_tokens: isEval ? 6000 : 7000, timeout: 180000,
           stream: true,
-          onToken: (c) => { live = c; if (!renderTimer) renderTimer = setTimeout(renderLive, 350); },
+          onToken: (c) => { live = c; scheduleRender(); },
           messages: [
-            { role:'system', content: isEval ? EVAL_PROMPT : TUTORIAL_PROMPT },
-            { role:'user', content: '以下是项目内容：\n\n' + ctx },
+            { role:'system', content: sysP },
+            { role:'user', content: userP },
           ],
         });
-        if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
+        done = true;
         recordUsage(usage);
         mountMD(box, content);
       } catch (e) {
-        if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
+        done = true;
         const msg = e.name === 'AbortError' ? '请求超时（180秒），请检查网络或减小项目规模后重试。' : e.message;
         box.innerHTML = '<p class="text-red-700 font-sans">❌ ' + msg + '</p>';
       }
@@ -842,22 +867,37 @@
         inner.className = 'max-w-[85%] px-5 py-3 rounded-[1.5rem] bg-white border border-stone-200 text-stone-700 rounded-bl-md';
         const body = document.createElement('div'); body.className = 'md text-sm'; inner.appendChild(body);
         wrap.appendChild(inner); $('chatLog').appendChild(wrap);
-        let live = '', rt = null;
-        const flush = () => { rt = null; try { body.innerHTML = renderMD(live); } catch(e){} };
+        let live = '', lastRender = 0, lastLen = 0, rafPending = false, done = false;
+        const scrollChat = () => { $('chatLog').scrollTop = $('chatLog').scrollHeight; };
+        const schedule = () => {
+          if (rafPending || done) return;
+          rafPending = true;
+          requestAnimationFrame(() => {
+            rafPending = false;
+            if (done) return;
+            const now = performance.now();
+            if (live.length - lastLen < 60 && now - lastRender < 280) { schedule(); return; }
+            lastRender = now; lastLen = live.length;
+            try { body.innerHTML = renderMD(live); } catch(e){}
+            setLiveTokens(promptEst, Math.ceil(live.length / 1.8));
+            scrollChat();
+          });
+        };
+        let promptEst = Math.ceil((ASK_PROMPT.length + ctx.length + q.length) / 1.8);
         const { content, usage } = await callLLM({
           apiKey: cfg.apiKey, baseURL: cfg.baseURL, model: cfg.model, temperature: 0.3, max_tokens: 2000, timeout: 60000, stream: true,
-          onToken: (c) => { live = c; if (!rt) rt = setTimeout(flush, 300); },
+          onToken: (c) => { live = c; schedule(); },
           messages: [
             { role:'system', content: ASK_PROMPT },
             { role:'user', content: '【项目内容摘录】\n'+ctx+'\n\n【问题】'+q },
           ],
         });
-        if (rt) { clearTimeout(rt); rt = null; }
+        done = true;
         recordUsage(usage);
         body.innerHTML = renderMD(content);
         const s = document.createElement('p'); s.className = 'font-sans text-xs text-stone-400 mt-2';
         s.textContent = '📎 参考：' + [...new Set(chunks.map((c)=>c.path))].slice(0,5).join(' · '); inner.appendChild(s);
-        $('chatLog').scrollTop = $('chatLog').scrollHeight;
+        scrollChat();
       } catch (e) {
         placeholder.remove();
         const msg = e.name === 'AbortError' ? '请求超时（60秒），请检查网络或 API 可用性。' : e.message;
