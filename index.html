@@ -709,7 +709,7 @@
       renderMermaid(el);
     }
 
-    // 安全渲染 Mermaid：渲染前校验语法关键字，渲染后校验结果非空；失败/为空/语法可疑 → 回退为浅色代码块
+    // 安全渲染 Mermaid：先用 mermaid.parse() 同步校验语法，再渲染；渲染后校验实际节点/边；任何失败/空/可疑 → 浅色代码块兜底
     const MERMAID_KW = /^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|stateDiagram-v2|erDiagram|gantt|pie|journey|mindmap|timeline|quadrantChart|sankey|architecture|requirementDiagram)\b/i;
     function fallbackMermaid(codeEl, source) {
       const pre = codeEl.closest('pre'); if (!pre) return;
@@ -721,35 +721,55 @@
       pre.style.overflowX = 'auto';
       pre.style.color = '#57534e';
       pre.style.margin = '1rem 0';
-      codeEl.removeAttribute('class');
-      codeEl.style.color = '#57534e';
-      codeEl.style.background = 'transparent';
-      codeEl.textContent = source;
+      const code = codeEl.tagName === 'CODE' ? codeEl : pre.querySelector('code') || codeEl;
+      code.className = ''; code.removeAttribute('class');
+      code.style.color = '#57534e';
+      code.style.background = 'transparent';
+      code.textContent = source;
+      // 替换内部可能的旧 svg，避免遗留
+      const svg = pre.querySelector('svg'); if (svg) svg.remove();
     }
-    function renderMermaid(el) {
+    function isMermaidRenderValid(m) {
+      const svg = m.querySelector('svg');
+      if (!svg) return false;
+      const txt = (svg.textContent || '').trim();
+      if (/^(syntax error|parse error|error)/i.test(txt)) return false;
+      const graphics = svg.querySelectorAll('rect,path,circle,ellipse,polygon,polyline,line,text');
+      if (graphics.length < 4) return false; // 太单薄（通常含背景 + 至少一个节点）
+      const hasNodes = svg.querySelectorAll('.node, g.node, rect.node, g.cluster, .cluster, [class*="nodeLabel"]').length > 0;
+      const hasEdges = svg.querySelectorAll('.edgePath, .flowchart-link, path.flowchart-link, .messageLine, [class*="edge"]').length > 0;
+      const hasSpecial = svg.querySelectorAll('.pieCircle, .arc, .task, .timeline-event, .journey-section, .er.entityBox, .statediagram-state, .sequenceNode').length > 0;
+      if (!hasNodes && !hasEdges && !hasSpecial) return false;
+      return true;
+    }
+    async function renderMermaid(el) {
       if (!window.mermaid) return;
       const nodes = Array.from(el.querySelectorAll('pre code.language-mermaid'));
       if (!nodes.length) return;
       try { mermaid.initialize({ startOnLoad:false, theme:'base', themeVariables:{ primaryColor:'#faf6f1', lineColor:'#8b9d77', fontFamily:'Times New Roman, STZhongsong, serif' }, securityLevel:'loose', suppressErrors:true }); } catch(e){}
-      const toRun = [];
-      nodes.forEach((node) => {
+      const validNodes = [];
+      for (const node of nodes) {
         const src = (node.textContent || '').trim();
-        if (!src || !MERMAID_KW.test(src)) { fallbackMermaid(node, src || '(空)'); return; }
-        node.removeAttribute('class'); node.classList.add('mermaid'); toRun.push(node);
-      });
-      if (!toRun.length) return;
-      const p = mermaid.run({ nodes: toRun });
-      if (p && typeof p.then === 'function') {
-        p.then(() => {
-          toRun.forEach((m) => {
-            const svg = m.querySelector('svg');
-            const rects = svg ? svg.querySelectorAll('rect,path,circle,ellipse,polygon,polyline,line,text').length : 0;
-            if (!svg || rects === 0) fallbackMermaid(m, (m.textContent || '').trim());
-          });
-        }).catch(() => {
-          toRun.forEach((m) => fallbackMermaid(m, (m.textContent || '').trim()));
-        });
+        if (!src || !MERMAID_KW.test(src)) { fallbackMermaid(node, src || '(空)'); continue; }
+        // 渲染前用 mermaid.parse 严格校验语法，非法直接兜底
+        try {
+          await mermaid.parse(src);
+          node.removeAttribute('class'); node.classList.add('mermaid'); validNodes.push(node);
+        } catch(e) {
+          fallbackMermaid(node, src);
+        }
       }
+      if (!validNodes.length) return;
+      try {
+        await mermaid.run({ nodes: validNodes });
+      } catch(e) {
+        validNodes.forEach((m) => fallbackMermaid(m, (m.textContent || '').trim()));
+        return;
+      }
+      // 渲染后仍做一次深度校验：含"Syntax error"文本、或图形数过少、或没有节点/边 → 兜底
+      validNodes.forEach((m) => {
+        if (!isMermaidRenderValid(m)) fallbackMermaid(m, (m.textContent || '').trim());
+      });
     }
 
     // ---------- 生成 / 问答 ----------
