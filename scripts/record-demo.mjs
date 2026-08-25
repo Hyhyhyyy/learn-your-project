@@ -24,14 +24,20 @@ const URL = process.env.DEMO_URL || "https://hyhyhyyy.github.io/learn-your-proje
 const API_KEY = process.env.DEMO_API_KEY || "";
 const BASE_URL = process.env.DEMO_BASE_URL || "";
 const MODEL = process.env.DEMO_MODEL || "";
-const REPO = process.env.DEMO_REPO || "https://github.com/owner/vibecoding-demo-repo";
+const REPO = process.env.DEMO_REPO || "";
 
 const MISSING = [];
 if (!API_KEY) MISSING.push("DEMO_API_KEY");
 if (!BASE_URL) MISSING.push("DEMO_BASE_URL");
 if (!MODEL) MISSING.push("DEMO_MODEL");
+if (!REPO) MISSING.push("DEMO_REPO");
 if (MISSING.length) {
   console.error("缺少环境变量：" + MISSING.join(", ") + "（仅供本地录制，key 不外传）");
+  process.exit(1);
+}
+// 避免用户漏设 DEMO_REPO 时指向占位地址，在加载步骤白白等 120s
+if (!/github\.com[/:][^/]+[/][^/?#]+/i.test(REPO)) {
+  console.error("DEMO_REPO 格式不正确，应为 https://github.com/<owner>/<repo>：" + REPO);
   process.exit(1);
 }
 
