@@ -90,6 +90,8 @@
     /* 代码地图 / 引用溯源 / 建议问题 / 代码片段弹窗 */
     .code-map-item { display:flex; gap:0.6rem; padding:0.45rem 0.6rem; border-radius:0.6rem; background:#fff; border:1px solid #efe9e0; align-items:baseline; }
     .cm-path { font-family:ui-monospace,monospace; font-size:0.78rem; color:#6f7d54; font-weight:600; white-space:nowrap; }
+    .cm-link { background:none; border:none; cursor:pointer; text-align:left; padding:0; }
+    .cm-link:hover { color:#4f6e3e; text-decoration:underline; }
     .cm-desc { font-size:0.82rem; color:#57534e; }
     .cite-row { margin-top:0.55rem; display:flex; flex-wrap:wrap; gap:0.35rem; align-items:center; }
     .cite-label { font-size:0.72rem; color:#a8a29e; }
@@ -110,6 +112,28 @@
     .lang-seg { transition:width .3s; }
     .ov-card { background:#fff; border:1px solid #e7e2da; border-radius:1rem; padding:0.9rem 1.1rem; }
     .ov-chip { display:inline-block; background:#f5f1ea; border:1px solid #e7e2da; border-radius:999px; padding:0.15rem 0.6rem; font-size:0.72rem; color:#57534e; margin:0.15rem; }
+    .dir-chip { cursor:pointer; transition:background .2s, border-color .2s, transform .1s; }
+    .dir-chip:hover { background:#efe7da; border-color:#d8cbb6; transform:translateY(-1px); }
+    .crumb { background:none; border:none; cursor:pointer; color:#7a6a3f; font-size:0.8rem; padding:0; font-family:ui-monospace,monospace; }
+    .crumb:hover { color:#4f6e3e; text-decoration:underline; }
+    .mod-stats { font-size:0.78rem; color:#78716c; margin:0.4rem 0 0.8rem; }
+    .mod-stats b { color:#44403c; }
+    .mod-sec-h { font-size:0.78rem; font-weight:600; color:#57534e; margin:1rem 0 0.5rem; border-top:1px solid #efe9e0; padding-top:0.7rem; }
+    .mod-snip-lead { font-size:0.74rem; color:#78716c; margin:0.2rem 0 0.3rem; }
+    .mod-snip { background:#1f1b16; color:#e9e2d6; border-radius:0.7rem; padding:0.7rem 0.9rem; overflow:auto; max-height:200px; font-size:0.72rem; line-height:1.5; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre; }
+    .mod-syms { display:flex; flex-wrap:wrap; gap:0.3rem; }
+    .sym-chip { font-size:0.7rem; padding:0.12rem 0.5rem; border-radius:999px; background:#f0f3ea; border:1px solid #d8e0c8; color:#4f6e3e; }
+    .sym-chip.sym-type { background:#eef2fb; border-color:#cdd9f0; color:#3b5b9a; }
+    .sym-chip.sym-func { background:#fbf3ea; border-color:#ecd9c0; color:#9a6a2b; }
+    .sym-chip.sym-class { background:#f3eefb; border-color:#ddd0f0; color:#6a3b9a; }
+    .mod-subs { display:flex; flex-wrap:wrap; gap:0.4rem; }
+    .mod-subs .dir-chip { background:#f5f1ea; border:1px solid #e7e2da; border-radius:0.6rem; padding:0.3rem 0.7rem; font-size:0.74rem; color:#57534e; }
+    .mod-files { display:flex; flex-direction:column; gap:0.3rem; }
+    .file-item { display:flex; align-items:center; justify-content:space-between; gap:0.6rem; width:100%; text-align:left; background:#fff; border:1px solid #efe9e0; border-radius:0.6rem; padding:0.5rem 0.8rem; font-size:0.78rem; color:#44403c; cursor:pointer; transition:background .2s, border-color .2s; font-family:ui-monospace,monospace; }
+    .file-item:hover { background:#f7f3ec; border-color:#d8cbb6; }
+    .file-item.entry { border-color:#e7c98a; background:#fdf8ec; }
+    .fi-name { word-break:break-all; }
+    .entry-badge { flex-shrink:0; font-size:0.62rem; background:#e0a93b; color:#fff; border-radius:999px; padding:0.05rem 0.45rem; font-family:sans-serif; }
     /* ProjCompiler 精髓：FactSignal 置信度标注 */
     .sig-row { display:flex; flex-wrap:wrap; gap:0.4rem; align-items:center; margin-top:0.5rem; }
     .sig-chip { font-size:0.7rem; padding:0.12rem 0.55rem; border-radius:999px; font-weight:600; border:1px solid transparent; }
@@ -1217,7 +1241,7 @@
       // 顶层目录
       const dirs = {};
       for (const f of p.tree) { const seg = f.split('/')[0]; if (f.includes('/')) dirs[seg] = (dirs[seg]||0)+1; }
-      const topDirs = Object.entries(dirs).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([d,c])=>'<span class="ov-chip">📁 '+esc(d)+' <span style="color:#a8a29e">('+c+')</span></span>').join('') || '<span class="toc-empty">（无子目录）</span>';
+      const topDirs = Object.entries(dirs).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([d,c])=>{ const arg = d.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); return '<button type="button" class="ov-chip dir-chip" onclick="openModule(\''+arg+'\')" title="点击进入该模块">📁 '+esc(d)+' <span style="color:#a8a29e">('+c+')</span></button>'; }).join('') || '<span class="toc-empty">（无子目录）</span>';
       // 依赖清单（解析 manifests）
       const deps = parseDeps(p.files);
       const depsHtml = deps.length ? deps.map((d)=>'<span class="ov-chip">'+esc(d.name)+(d.ver?(' '+esc(d.ver)):'')+'</span>').join('') : '<span class="toc-empty">未识别到依赖清单（package.json / requirements.txt / go.mod / Cargo.toml 等）</span>';
@@ -1227,7 +1251,7 @@
         const cyc = (p.graph.dirCycles||[]).concat(p.graph.fileCycles||[]);
         let h = '';
         if (p.graph.topKey && p.graph.topKey.length) {
-          h += '<div class="mb-2"><div class="text-xs text-stone-500 mb-1">📌 关键模块（被依赖最多 · 修改需谨慎）</div>' + p.graph.topKey.slice(0,5).map((k)=>'<span class="ov-chip">'+esc(k.file.split('/').pop())+' <span style="color:#a8a29e">·被'+k.fanIn+'依赖</span></span>').join('') + '</div>';
+          h += '<div class="mb-2"><div class="text-xs text-stone-500 mb-1">📌 关键模块（被依赖最多 · 修改需谨慎 · 点击进入）</div>' + p.graph.topKey.slice(0,5).map((k)=>{ const fp = k.file; const seg = fp.split('/'); if (seg.length < 2) return '<span class="ov-chip">'+esc(seg[seg.length-1])+' <span style="color:#a8a29e">·被'+k.fanIn+'依赖</span></span>'; const arg = seg[0].replace(/\\/g,'\\\\').replace(/'/g,"\\'"); return '<button type="button" class="ov-chip dir-chip" onclick="openModule(\''+arg+'\')" title="'+esc(fp)+'">'+esc(seg[seg.length-1])+' <span style="color:#a8a29e">·被'+k.fanIn+'依赖</span></button>'; }).join('') + '</div>';
         } else {
           // 退化为结构概况：最大目录、最深路径、符号数量
           const dirCount = {};
@@ -1248,7 +1272,7 @@
       box.innerHTML =
         '<div class="ov-card"><div class="font-serif text-lg text-stone-800">📦 '+esc(p.name)+'</div>'+(p.description?'<div class="text-sm text-stone-600 mt-1">'+esc(p.description)+'</div>':'')+'<div class="text-xs text-stone-500 mt-1">主语言：'+esc(p.language||'未知')+'<span class="fact-badge sig-obs">Observed</span> · 分支：'+esc(p.branch)+' · 文件总数：'+p.tree.length+' · 已抓取内容：'+p.files.length+'</div></div>'
         + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">语言占比</div>'+langBar+'<div class="mt-2">'+langLegend+'</div></div>'
-        + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">顶层目录</div>'+topDirs+'</div>'
+        + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">顶层目录 <span class="text-xs text-stone-400 font-normal">（点击进入模块 →）</span></div>'+topDirs+'</div>'
         + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">依赖清单 <span class="fact-badge sig-obs">Observed</span></div>'+depsHtml+'</div>'
         + factSignalCard(p)
         + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">依赖关系图（GitNexus 风格·精简）</div><button onclick="buildDepGraph()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🔬 生成关系图</button></div><div id="depGraphBox" class="text-sm text-stone-400">点击上方按钮，从已加载文件的 import/require 语句扫描模块依赖并绘制。</div></div>'
@@ -1257,6 +1281,59 @@
         + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">架构图（DeepWiki 精髓·大模型生成）</div><button onclick="generateArchDiagram()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🧭 生成架构图</button></div><div id="archBox" class="text-sm text-stone-400">由大模型依据仓库结构梳理主要模块与分层依赖，绘制 Mermaid 架构图。</div></div>'
         + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">代码地图（DeepWiki 精髓·导览）</div><button onclick="generateCodeMap()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🗺️ 生成代码地图</button></div><div id="codeMapBox" class="text-sm text-stone-400">由大模型挑选最关键的文件并给出一句话职责说明，作为阅读路线导览。</div></div>'
         + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">📐 项目规格 Prompt（ProjCompiler 精髓·代码→精准 Prompt）</div><button onclick="generateSpecPrompt()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">📐 生成规格 Prompt</button></div><div id="specBox" class="text-sm text-stone-400">把代码库「反向编译」成一段可被任意 AI 理解的精准项目 Prompt：自动识别入口点、模块职责、关键约束，并用 FactSignal 标注每条事实的置信度（Observed 已观测 / Inferred 推断 / Missing 缺失）。可复制或下载为 <span class="font-mono">prompt.txt</span> 直接喂给任何大模型。</div></div>';
+    }
+    // 目录 / 模块导航：点击顶层目录或关键模块，进入该模块查看文件、子目录、符号与代表片段
+    function openModule(path) {
+      const p = currentProject; if (!p) return;
+      const dirArg = path.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const files = (p.files || []).filter((f) => f.path === path || f.path.startsWith(path + '/'));
+      const head = $('moduleTitle'), body = $('moduleBody');
+      const parts = path.split('/');
+      // 面包屑
+      let acc = '', crumb = '';
+      for (let i = 0; i < parts.length; i++) { acc = i === 0 ? parts[0] : acc + '/' + parts[i]; const a = acc.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); crumb += (i ? ' <span style="color:#d6cdbf">/</span> ' : '') + '<button type="button" class="crumb" onclick="openModule(\''+a+'\')">'+esc(parts[i])+'</button>'; }
+      head.innerHTML = '📂 ' + crumb;
+      // 分类：子目录 vs 直接文件
+      const subdirs = new Set(); const leaves = [];
+      for (const f of files) {
+        const rel = (f.path.startsWith(path + '/') ? f.path.slice(path.length + 1) : f.path);
+        const segs = rel.split('/');
+        if (segs.length > 1) subdirs.add(segs[0]); else leaves.push(f);
+      }
+      const entrySet = (p.facts && p.facts.entrypoints) ? new Set(p.facts.entrypoints) : new Set();
+      const relName = (fp) => { let r = fp.slice(path.length); if (r.startsWith('/')) r = r.slice(1); return r || fp; };
+      let html = '<div class="mod-stats">本模块共 <b>'+files.length+'</b> 个已抓取文件 · <b>'+subdirs.size+'</b> 个子目录</div>';
+      // 代表文件片段
+      if (leaves.length + subdirs.size) {
+        const pool = files.slice().sort((a, b) => (b.content || '').length - (a.content || '').length);
+        const primary = pool[0];
+        const snip = pickSnippet(primary.content || '');
+        if (snip) html += '<div class="mod-snip-lead">📄 代表文件：<b>'+esc(primary.path)+'</b></div><pre class="mod-snip"><code>'+esc(snip)+'</code></pre>';
+      }
+      // 关键符号（来自代码知识图谱）
+      if (p.graph && p.graph.symbols) {
+        const seen = new Set(); const uniq = [];
+        for (const s of p.graph.symbols) { if (s.file === path || s.file.startsWith(path + '/')) { if (seen.has(s.name)) continue; seen.add(s.name); uniq.push(s); } }
+        if (uniq.length) html += '<div class="mod-sec-h">🔧 该模块定义的主要符号（'+uniq.length+'）</div><div class="mod-syms">'+uniq.slice(0, 48).map((s)=>'<span class="sym-chip sym-'+esc(s.kind)+'">'+esc(s.kind)+' '+esc(s.name)+'</span>').join('')+'</div>';
+      }
+      // 子目录（可继续下钻）
+      if (subdirs.size) {
+        html += '<div class="mod-sec-h">📁 子目录（点击继续进入）</div><div class="mod-subs">' + [...subdirs].sort().map((d)=>{ const a = (path + '/' + d).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); return '<button type="button" class="dir-chip" onclick="openModule(\''+a+'\')">📂 '+esc(d)+'</button>'; }).join('') + '</div>';
+      }
+      // 文件列表（点击查看真实代码）
+      if (leaves.length) {
+        html += '<div class="mod-sec-h">📄 文件（点击查看代码）</div><div class="mod-files">' + leaves.map((f)=>{ const isEntry = entrySet.has(f.path); return '<button type="button" class="file-item'+(isEntry?' entry':'')+'" onclick="openFileSnippet(\''+f.path.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')"><span class="fi-name">'+esc(relName(f.path))+'</span>'+(isEntry?'<span class="entry-badge">入口</span>':'')+'</button>'; }).join('') + '</div>';
+      } else if (!subdirs.size) {
+        html += '<div class="toc-empty">该路径下未抓取到文件（可能尚未被加载，或为空目录）。</div>';
+      }
+      body.innerHTML = html;
+      $('moduleModal').classList.remove('hidden');
+    }
+    function closeModule() { $('moduleModal').classList.add('hidden'); }
+    function openFileSnippet(path) {
+      const f = resolveFile(path); if (!f) { alert('未找到文件：' + path + '（可能未被抓取）'); return; }
+      const total = (f.content || '').split('\n').length;
+      showSnippet(path, 1, Math.min(60, total));
     }
     // 解析依赖清单
     function parseDeps(files) {
@@ -1835,7 +1912,17 @@
         p.codeMap = items; box.innerHTML = renderCodeMap(items);
       } catch (e) { box.innerHTML = '<span class="toc-empty">生成失败：' + esc(e.message || String(e)) + '</span>'; }
     }
-    function renderCodeMap(items) { return '<div class="space-y-2">' + items.map((it) => '<div class="code-map-item"><span class="cm-path">' + esc(it.path) + '</span><span class="cm-desc">' + esc(it.desc) + '</span></div>').join('') + '</div>'; }
+    function renderCodeMap(items) { return '<div class="space-y-2">' + items.map((it) => { const a = it.path.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); return '<div class="code-map-item"><button type="button" class="cm-path cm-link" onclick="navFromPath(\''+a+'\')" title="点击进入该路径">'+esc(it.path)+'</button><span class="cm-desc">'+esc(it.desc)+'</span></div>'; }).join('') + '</div>'; }
+    // 代码地图/任意路径：是文件则看代码，是目录则进模块
+    function navFromPath(path) {
+      const p = currentProject; if (!p) return;
+      if (resolveFile(path)) { openFileSnippet(path); return; }
+      const isDir = (p.files || []).some((f) => f.path.startsWith(path + '/'));
+      if (isDir) { openModule(path); return; }
+      const top = path.split('/')[0];
+      if (top && (p.files || []).some((f) => f.path.startsWith(top + '/'))) openModule(top);
+      else alert('未在已抓取文件中找到：' + path);
+    }
     // ---- 建议问题引导（DeepWiki 风格） ----
     function addSuggestedQuestions() {
       const box = $('suggestBox'); if (!box) return;
@@ -2022,6 +2109,17 @@
         <button onclick="closeSnippet()" class="px-3 py-1 rounded-full text-xs bg-stone-200 text-stone-600 hover:bg-stone-300 transition-colors">✕ 关闭</button>
       </div>
       <div id="snipBody" class="snip-code-wrap"></div>
+    </div>
+  </div>
+
+  <!-- 模块导航弹窗（点击目录进入） -->
+  <div id="moduleModal" class="snip-backdrop hidden" onclick="if(event.target===this)closeModule()">
+    <div class="snip-modal" style="max-width:860px;">
+      <div class="flex items-center justify-between px-4 pt-4">
+        <div id="moduleTitle" class="font-mono text-sm text-stone-700"></div>
+        <button onclick="closeModule()" class="px-3 py-1 rounded-full text-xs bg-stone-200 text-stone-600 hover:bg-stone-300 transition-colors">✕ 关闭</button>
+      </div>
+      <div id="moduleBody" class="snip-code-wrap" style="padding:0.5rem 1.25rem 1.5rem;"></div>
     </div>
   </div>
 </body>
