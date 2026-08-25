@@ -3028,7 +3028,6 @@
       };
       spy();
     }
-    function scrollToHead(id) { const el = document.getElementById(id); if (el) { const y = el.getBoundingClientRect().top + window.scrollY - 90; window.scrollTo({ top: y, behavior: 'smooth' }); } }
 
     // ---------- Embedding（深度向量检索，无后端） ----------
     async function callEmbed({ apiKey, baseURL, model, inputs, timeout=60000, apiStyle }) {
