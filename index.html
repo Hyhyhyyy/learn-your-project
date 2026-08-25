@@ -146,6 +146,19 @@
     .spec-actions { display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.6rem; align-items:center; }
     .spec-toggle { font-size:0.72rem; color:#57534e; display:inline-flex; align-items:center; gap:0.3rem; cursor:pointer; }
     .spec-status { font-size:0.72rem; color:#7a6a3f; }
+    /* VibeCoding：指挥 AI 的行动清单 */
+    .risk-badge { display:inline-block; font-size:0.72rem; font-weight:700; padding:0.2rem 0.7rem; border-radius:999px; white-space:nowrap; }
+    .risk-high { background:#fbe3e0; color:#a1483f; border:1px solid #f2cfc9; }
+    .risk-mid { background:#fdf1d8; color:#9a6a2b; border:1px solid #ecd9b0; }
+    .risk-low { background:#eef6ee; color:#3f7a3f; border:1px solid #cfe6cf; }
+    .action-item { border:1px solid #efe9e0; border-radius:0.8rem; padding:0.7rem 0.9rem; margin-top:0.6rem; background:#fff; }
+    .action-item.red { border-left:4px solid #c0554b; }
+    .action-item.yellow { border-left:4px solid #d4a373; }
+    .action-item.green { border-left:4px solid #8b9d77; }
+    .action-title { font-size:0.85rem; font-weight:600; color:#44403c; }
+    .action-detail { font-size:0.78rem; color:#57534e; margin:0.2rem 0 0.4rem; }
+    .action-prompt { background:#1f1b16; color:#e9e2d6; border-radius:0.6rem; padding:0.6rem 0.8rem; font-size:0.72rem; line-height:1.5; font-family:ui-monospace,monospace; white-space:pre-wrap; word-break:break-word; max-height:160px; overflow:auto; margin-top:0.3rem; }
+    .action-foot { display:flex; gap:0.5rem; margin-top:0.4rem; align-items:center; flex-wrap:wrap; }
   </style>
 </head>
 <body class="paper-grain">
@@ -170,10 +183,10 @@
       <div class="absolute -top-10 -right-10 w-48 h-48 blob-2 bg-[#d4a373]/40"></div>
       <div class="absolute -bottom-16 -left-12 w-56 h-56 blob bg-[#faf6f1]/30"></div>
       <div class="relative max-w-4xl mx-auto text-center">
-        <p class="font-sans text-sm tracking-wide text-stone-700 mb-4">🌿 在 VIBE CODING 盛行的时代，真正读懂一个项目</p>
-        <h1 class="font-serif text-4xl md:text-5xl lg:text-6xl text-stone-800 leading-tight">把任意 GitHub 仓库<br/>变成可阅读、可学习、可问答的知识库</h1>
+        <p class="font-sans text-sm tracking-wide text-stone-700 mb-4">🌿 在 VIBE CODING 盛行的时代——别让 AI 写的项目，你自己都看不懂</p>
+        <h1 class="font-serif text-4xl md:text-5xl lg:text-6xl text-stone-800 leading-tight">把任意 GitHub 仓库<br/>变成你读得懂、学得会、指挥得了的知识库</h1>
         <p class="font-sans text-sm md:text-base max-w-2xl mx-auto mt-6 text-stone-700">
-          纯静态、零后端。配置大模型 API，粘贴仓库地址，一键生成评估报告与零基础图文教学，并以项目本身为知识库精准问答。密钥仅存于你的浏览器。
+          既能<b>研读优秀的开源项目</b>，也能把你亲手让 AI 写出来的 <b>VibeCoding 项目</b>丢进来——看清 AI 到底做了什么、哪里有坑，快速把项目握在自己手里，再带着清晰指令去<b>指挥 AI 下一步</b>。纯静态、零后端，密钥仅存于你的浏览器。
         </p>
         <div class="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
           <a href="#config" class="px-6 py-3 rounded-full font-medium transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">开始配置</a>
@@ -241,6 +254,15 @@
         <div class="bg-[#faf6f1] rounded-[2rem] border border-stone-200 p-6 md:p-8 organic-shadow">
           <h2 class="font-serif text-2xl md:text-3xl text-stone-800 mb-2">② 加载你的 GitHub 仓库</h2>
           <p class="font-sans text-sm text-stone-600 mb-6">直接通过 GitHub API 在浏览器内拉取（已支持跨域）。私有仓库可填 Token。</p>
+          <div class="mb-6 px-5 py-4 rounded-[1.25rem] bg-[#8b9d77]/10 border border-[#8b9d77]/30">
+            <label class="flex items-start gap-3 cursor-pointer">
+              <input id="ownProject" type="checkbox" onchange="ownProject=this.checked; if(currentProject) buildOverview();" class="mt-1 w-4 h-4 accent-[#8b9d77]" />
+              <span class="font-sans text-sm text-stone-700">
+                <b>🎯 这是我自己的 VibeCoding 项目</b><br/>
+                <span class="text-stone-500">勾选后，学习空间会重点帮你「看清 AI 到底做了什么」，并生成一份可一键复制的「指挥 AI 的行动清单」——让你更快把握自己的项目、更好地指挥 AI 下一步。</span>
+              </span>
+            </label>
+          </div>
           <div id="repoLockBanner" class="mb-6 px-5 py-3 rounded-[1.25rem] bg-[#d4a373]/15 text-stone-700 font-sans text-sm flex items-center gap-2">
             🔒 请先在上方「验证配置」成功后再加载仓库
           </div>
@@ -337,7 +359,7 @@
           <span class="font-serif text-xl md:text-2xl text-stone-800 flex items-center gap-2">
             <span class="inline-block w-7 h-7 blob bg-[#8b9d77]"></span>学习你的项目
           </span>
-          <p class="font-sans text-xs mt-3 leading-relaxed">面向 VIBE CODING 的纯静态项目学习助手。无后端、密钥不离浏览器。</p>
+          <p class="font-sans text-xs mt-3 leading-relaxed">面向 VIBE CODING 的纯静态项目学习助手：既能研读优秀开源项目，也能看清你亲手让 AI 写的项目到底做了什么，把指挥权握在自己手里。无后端、密钥不离浏览器。</p>
         </div>
         <div>
           <h4 class="font-serif text-lg text-stone-800 mb-3">三步上手</h4>
@@ -1003,6 +1025,7 @@
         let sysP = isEval ? EVAL_PROMPT : TUTORIAL_PROMPT;
         const health = getHealthSummary();
         if (isEval && health) sysP += '\n\n【架构健康度（由代码知识图谱自动分析，可直接引用为证据）】\n' + health;
+        if (isEval && ownProject) sysP += '\n\n【特别视角：这是项目主人亲手让 AI（VibeCoding）写出来的项目】请务必在报告末尾增设一节「🎯 给项目主人的行动建议：如何更好地指挥 AI 下一步」。用具体文件/目录举例，告诉主人：① 哪些地方应先自己搞懂、再让 AI 动；② 哪些坑是 AI 改动最可能引入的连带风险；③ 一句可直接粘贴给编码 Agent 的下一步指令示例。语气要像在帮一个想拿回项目掌控权的人。';
         const userP = '以下是项目内容：\n\n' + ctx;
         promptEst = Math.ceil((sysP.length + userP.length) / 1.8);
         const { content, usage } = await callLLM({
@@ -1228,6 +1251,7 @@
     const LANG_COLORS = { javascript:'#f1e05a', typescript:'#3178c6', python:'#3572A5', java:'#b07219', go:'#00ADD8', rust:'#dea584', c:'#555555', cpp:'#f34b7d', csharp:'#178600', ruby:'#701516', php:'#4F5D95', swift:'#F05138', kotlin:'#A97BFF', dart:'#00B4AB', html:'#e34c26', css:'#563d7c', vue:'#41b883', svelte:'#ff3e00', shell:'#89e051', markdown:'#083fa1', json:'#cbcbcb', yaml:'#cb171e', dockerfile:'#384d54', makefile:'#427819' };
     function langOf(p) { const b = p.split('/').pop().toLowerCase(); if (b === 'dockerfile') return 'dockerfile'; if (b === 'makefile') return 'makefile'; const e = fileExt(p); return e || '其他'; }
     function esc(s) { return (s||'').replace(/[&<>"']/g, (c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    let ownProject = false;   // 是否勾选「这是我自己的 VibeCoding 项目」
     function buildOverview() {
       const p = currentProject; if (!p) return;
       const box = $('overviewBox'); if (!box) return;
@@ -1269,7 +1293,9 @@
         }
         healthInner = h;
       }
-      box.innerHTML =
+      const overviewBanner = ownProject ? '<div class="ov-card" style="border-color:#e0a93b;background:#fdf8ec"><div class="text-sm text-stone-700">🎯 <b>这是你亲手让 AI 写的项目。</b> 先看清下面的「🎯 指挥 AI 的行动清单」，搞清楚 AI 到底做了什么、哪里有坑，再决定下一步让它做什么——把指挥权握在自己手里。</div></div>' : '';
+      const directorHtml = buildDirectorBrief();
+      box.innerHTML = overviewBanner +
         '<div class="ov-card"><div class="font-serif text-lg text-stone-800">📦 '+esc(p.name)+'</div>'+(p.description?'<div class="text-sm text-stone-600 mt-1">'+esc(p.description)+'</div>':'')+'<div class="text-xs text-stone-500 mt-1">主语言：'+esc(p.language||'未知')+'<span class="fact-badge sig-obs">Observed</span> · 分支：'+esc(p.branch)+' · 文件总数：'+p.tree.length+' · 已抓取内容：'+p.files.length+'</div></div>'
         + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">语言占比</div>'+langBar+'<div class="mt-2">'+langLegend+'</div></div>'
         + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">顶层目录 <span class="text-xs text-stone-400 font-normal">（点击进入模块 →）</span></div>'+topDirs+'</div>'
@@ -1280,8 +1306,123 @@
         + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">代码知识图谱（GitNexus 精髓·预计算关系智能）</div><button onclick="renderCodeGraph()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🕸️ 生成图谱</button></div><div id="codeGraphBox" class="text-sm text-stone-400">本地扫描函数/类定义与调用、导入关系，构建可交互的模块关系图谱（无需大模型，毫秒级）。</div></div>'
         + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">架构图（DeepWiki 精髓·大模型生成）</div><button onclick="generateArchDiagram()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🧭 生成架构图</button></div><div id="archBox" class="text-sm text-stone-400">由大模型依据仓库结构梳理主要模块与分层依赖，绘制 Mermaid 架构图。</div></div>'
         + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">代码地图（DeepWiki 精髓·导览）</div><button onclick="generateCodeMap()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🗺️ 生成代码地图</button></div><div id="codeMapBox" class="text-sm text-stone-400">由大模型挑选最关键的文件并给出一句话职责说明，作为阅读路线导览。</div></div>'
-        + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">📐 项目规格 Prompt（ProjCompiler 精髓·代码→精准 Prompt）</div><button onclick="generateSpecPrompt()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">📐 生成规格 Prompt</button></div><div id="specBox" class="text-sm text-stone-400">把代码库「反向编译」成一段可被任意 AI 理解的精准项目 Prompt：自动识别入口点、模块职责、关键约束，并用 FactSignal 标注每条事实的置信度（Observed 已观测 / Inferred 推断 / Missing 缺失）。可复制或下载为 <span class="font-mono">prompt.txt</span> 直接喂给任何大模型。</div></div>';
+        + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">📐 项目规格 Prompt（ProjCompiler 精髓·代码→精准 Prompt）</div><button onclick="generateSpecPrompt()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">📐 生成规格 Prompt</button></div><div id="specBox" class="text-sm text-stone-400">把代码库「反向编译」成一段可被任意 AI 理解的精准项目 Prompt：自动识别入口点、模块职责、关键约束，并用 FactSignal 标注每条事实的置信度（Observed 已观测 / Inferred 推断 / Missing 缺失）。可复制或下载为 <span class="font-mono">prompt.txt</span> 直接喂给任何大模型——相当于把你的项目「翻译」成 AI 能准确理解的语境，避免它凭空脑补、改错地方。</div></div>'
+        + directorHtml;
     }
+    // ============ VibeCoding：指挥 AI 的行动清单（基于真实文件扫描，无需大模型） ============
+    let currentDirectorPrompt = '';
+    function buildDirectorBrief() {
+      const p = currentProject; if (!p) return '';
+      try {
+        if (!p.facts) { try { scanRepoFacts(); } catch (e) {} }
+        const codeExt = /\.(js|jsx|ts|tsx|mjs|cjs|py|go|rs|java|cpp|c|cc|h|hpp|rb|php|cs|swift|kt|scala|lua|sh|r|vue|svelte|dart)$/i;
+        const isCode = (f) => codeExt.test(f.path);
+        const files = p.files || [];
+        const tree = p.tree || [];
+        const allPaths = new Set(tree);
+        const entrySet = (p.facts && p.facts.entrypoints) ? new Set(p.facts.entrypoints) : new Set();
+        const re = /(?:^|[^.\w])(?:import\s+(?:[\s\S]*?from\s+)?|require\s*\(\s*|from\s+)(["'])([^"'\n]+)\1/g;
+        const referenced = new Set();
+        const edges = [];
+        function resolve(importer, spec) {
+          if (!/^\.\.?\//.test(spec)) return null;
+          const base = importer.includes('/') ? importer.slice(0, importer.lastIndexOf('/')) : '';
+          const parts = (base ? base.split('/') : []).concat(spec.split('/'));
+          const stack = [];
+          for (const ps of parts) { if (ps === '.' || ps === '') continue; if (ps === '..') stack.pop(); else stack.push(ps); }
+          const cand = stack.join('/');
+          const cands = [cand, cand + '.js', cand + '.ts', cand + '.jsx', cand + '.tsx', cand + '.mjs', cand + '.cjs', cand + '.py', cand + '.go', cand + '/index.js', cand + '/index.ts', cand + '/index.tsx', cand + '/index.jsx', cand + '.vue', cand + '.svelte'];
+          for (const c of cands) if (allPaths.has(c)) return c;
+          return null;
+        }
+        const SCAN_CAP = 700; let scanned = 0;
+        for (const f of files) {
+          if (scanned++ > SCAN_CAP) break;
+          if (!isCode(f)) continue;
+          let m; re.lastIndex = 0;
+          while ((m = re.exec(f.content || '')) !== null) {
+            const tgt = m[2];
+            if (!/^\.\.?\//.test(tgt)) continue;
+            const r = resolve(f.path, tgt);
+            if (r) { referenced.add(r); if (isCode({ path: r })) edges.push([f.path, r]); }
+          }
+        }
+        const SKIP = /^(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|tsconfig.*|webpack.*|vite.*|rollup.*|babel.*|eslint.*|prettier.*|cargo\.toml|cargo\.lock|go\.mod|go\.sum|requirements\.txt|pyproject\.toml|poetry\.lock|gemfile|gemfile\.lock|composer\.json|composer\.lock|deno\.json|deno\.lock|\.env.*|makefile|cmakelists\.txt|\.gitignore|\.npmrc|\.npmignore)$/i;
+        const orphans = [];
+        for (const f of files) {
+          if (!isCode(f)) continue;
+          if (referenced.has(f.path) || entrySet.has(f.path)) continue;
+          const base = f.path.split('/').pop();
+          if (SKIP.test(base)) continue;
+          orphans.push(f.path);
+        }
+        const giants = files.filter((f) => isCode(f)).map((f) => ({ path: f.path, lines: (f.content || '').split('\n').length })).filter((x) => x.lines >= 350).sort((a, b) => b.lines - a.lines).slice(0, 6);
+        const hasTests = tree.some((t) => /(^|[\/\\])(test|tests|spec|__tests__)[\/\\]/i.test(t) || /\.(test|spec)\.(js|ts|jsx|tsx)$/i.test(t) || /_test\.go$/.test(t) || /^test_.*\.py$/.test(t.split('/').pop()));
+        const hasReadme = (p.facts && p.facts.hasReadme) || files.some((f) => /^readme/i.test(f.path.split('/').pop()));
+        const adj = new Map();
+        for (const [a, b] of edges) { if (!adj.has(a)) adj.set(a, []); adj.get(a).push(b); }
+        const cyc = findCycles([...edges].map(([from, to]) => ({ from, to }))).slice(0, 4);
+        const entryCount = entrySet.size;
+        const red = [], yellow = [], green = [], P = [];
+        if (orphans.length) {
+          red.push({ t: '孤儿文件（' + orphans.length + ' 个，疑似 AI 生成后废弃或你从未理清）', d: orphans.slice(0, 6).map((o) => '· ' + esc(o)).join('<br/>') + (orphans.length > 6 ? '<br/>· …' : ''), prompt: orphans.slice(0, 8).map((o) => '文件 `' + o + '` 没有任何模块引用它，疑似之前生成后没用上或我（人类）没理清。请先告诉我它是否还有用：没用就安全删除；有用就把它正确接入相关模块。不要擅自改动其他文件。').join('\n\n') });
+          P.push('## 🔴 孤儿文件（请先理清）'); for (const o of orphans.slice(0, 8)) P.push('- `' + o + '`：无模块引用，疑似废弃或遗漏接入。先确认删除或接入，再继续。');
+        }
+        if (giants.length) {
+          red.push({ t: '巨型文件（' + giants.length + ' 个，疑似 AI 一次性生成，改动牵一发动全身）', d: giants.map((g) => '· ' + esc(g.path) + '（' + g.lines + ' 行）').join('<br/>'), prompt: giants.map((g) => '文件 `' + g.path + '` 有 ' + g.lines + ' 行，疑似一次性生成。建议先拆成若干小模块、为每个函数写清职责，再让我继续改；改动前先向我解释你要动哪里、为什么。').join('\n\n') });
+          P.push('## 🔴 巨型文件（建议先拆分）'); for (const g of giants) P.push('- `' + g.path + '`：' + g.lines + ' 行，疑似一次性生成，先拆分再改。');
+        }
+        if (cyc.length) {
+          red.push({ t: '循环依赖（' + cyc.length + ' 处，改一处可能影响另一处）', d: cyc.map((c) => '↻ ' + c.map(esc).join(' → ')).join('<br/>'), prompt: cyc.map((c) => '检测到循环依赖：' + c.join(' → ') + '。建议先抽出一个公共层/接口解耦，再继续开发，避免改动相互污染。').join('\n\n') });
+          P.push('## 🔴 循环依赖'); for (const c of cyc) P.push('- ' + c.join(' → '));
+        }
+        if (!hasTests) {
+          yellow.push({ t: '缺少测试（AI 改动没有安全网）', d: '当前仓库没有测试目录或测试文件，AI 的任何改动都可能悄悄引入回归。', prompt: '目前没有测试。请先为最关键的一两条路径补最小可用测试（happy path），跑通后再继续扩展功能，每一步都用测试验证，避免回归。' });
+          P.push('## 🟡 缺少测试'); P.push('- 先补关键路径最小测试，再让 AI 增量开发。');
+        } else { green.push('已有测试，可放心让 AI 按「红→绿→重构」增量修改并用测试验证。'); }
+        if (!hasReadme) {
+          yellow.push({ t: '缺少 README（你和 AI 都缺项目说明）', d: '没有 README，AI 只能从代码反推项目目标，容易理解偏差。', prompt: '缺少 README。请先帮我写一份简短的 README：项目目标、如何启动、目录职责。写完后我（人类）会过一遍再确认。' });
+          P.push('## 🟡 缺少 README'); P.push('- 先写简短 README（目标/启动/目录职责），由我（人类）过目。');
+        } else { green.push('已有 README，AI 可基于它对齐项目目标。'); }
+        if (entryCount === 0) {
+          yellow.push({ t: '未识别到明确入口（启动点不清）', d: '无法自动判断程序从哪里启动，你或 AI 都可能改错启动逻辑。', prompt: '我无法自动识别入口文件。请先告诉我程序从哪里启动（启动命令 / 入口文件），我（AI）再继续，避免动错启动逻辑。' });
+          P.push('## 🟡 入口不清'); P.push('- 请先告诉我程序入口/启动命令，再继续。');
+        } else if (entryCount > 3) {
+          yellow.push({ t: '疑似多个入口（' + entryCount + ' 个）', d: '识别到多个疑似入口：' + [...entrySet].slice(0, 6).map(esc).join('、') + (entrySet.size > 6 ? ' …' : '') + '。确认主入口，避免改错启动逻辑。', prompt: '识别到多个疑似入口：' + [...entrySet].slice(0, 8).join('、') + '。请确认哪个是主入口，避免我改错启动逻辑。' });
+          P.push('## 🟡 多入口'); P.push('- 疑似入口：' + [...entrySet].slice(0, 8).join('、') + '，请确认主入口。');
+        }
+        if (!red.length && !yellow.length) { green.push('结构清晰、无循环依赖、关键事实齐全——可让 AI 放心按模块增量开发。'); }
+        let risk = orphans.length * 7 + giants.length * 10 + cyc.length * 12 + (hasTests ? 0 : 14) + (hasReadme ? 0 : 8) + (entryCount === 0 ? 14 : 0);
+        risk = Math.min(100, risk);
+        const riskLabel = risk >= 60 ? '高' : risk >= 30 ? '中' : '低';
+        const riskCls = risk >= 60 ? 'risk-high' : risk >= 30 ? 'risk-mid' : 'risk-low';
+        const riskText = risk >= 60 ? 'AI 自主度高，建议先按清单厘清再大改' : risk >= 30 ? '部分需要你先搞懂，再让 AI 动手' : '你基本能 hold 住，可放心指挥 AI';
+        const title = ownProject ? '🎯 指挥 AI 的行动清单' : '🧭 AI 协作建议';
+        const intro = ownProject
+          ? '这是你亲手让 AI 写出来的项目。下面是基于真实文件的「体检」——先看清 AI 到底做了什么、哪里有坑，再带着这些指令去指挥它下一步。每条都可复制到你的编码 Agent。'
+          : '基于真实文件自动体检，给出「你该先搞懂什么、可以放心让 AI 做什么」的协作建议。把项目投给 AI 前，先对齐这些点。';
+        let html = '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">' + title + '</div><span class="risk-badge ' + riskCls + '">AI 自主度风险：' + riskLabel + '（' + risk + '）</span></div>';
+        html += '<div class="text-xs text-stone-500 mb-2">' + intro + ' <span class="fact-badge sig-obs">Observed</span> 全部由代码扫描得出，可核实。</div>';
+        html += '<div class="text-xs" style="color:#9a6a2b">⚠ ' + riskText + '</div>';
+        let k = 0;
+        const renderItem = (it, cls) => {
+          const idp = 'dirPrompt-' + (k++);
+          return '<div class="action-item ' + cls + '"><div class="action-title">' + esc(it.t) + '</div><div class="action-detail">' + it.d + '</div><div class="action-prompt" id="' + idp + '" data-copy="' + esc(it.prompt) + '">' + esc(it.prompt) + '</div><div class="action-foot"><button onclick="copyElText(\'' + idp + '\',\'dirStatus\')" class="px-3 py-1 rounded-full font-medium text-xs bg-white text-stone-700 border border-stone-300 hover:bg-stone-100">📋 复制这条指令</button></div></div>';
+        };
+        if (red.length) { html += '<div class="mod-sec-h" style="border-top:none;padding-top:0.4rem;margin-top:0.6rem;">🔴 先搞懂 / 先和 AI 对齐</div>'; for (const it of red) html += renderItem(it, 'red'); }
+        if (yellow.length) { html += '<div class="mod-sec-h">🟡 建议补齐</div>'; for (const it of yellow) html += renderItem(it, 'yellow'); }
+        if (green.length) { html += '<div class="mod-sec-h">🟢 可放心让 AI 做</div><div class="text-xs text-stone-600">' + green.map((g) => '· ' + esc(g)).join('<br/>') + '</div>'; }
+        const full = '# 我是这个项目的主人，请基于以下「体检结果」继续与我协作\n（以下由「学习你的项目」依据真实文件扫描得出，每条都可核实；请先按 🔴/🟡 与我对齐，再动手）\n\n' + P.join('\n') + '\n\n## 我对你的总体要求\n- 改动前先用一句话说明你要动哪里、为什么；\n- 不臆造不存在的文件或功能；\n- 每做一处改动，告诉我它影响了哪些模块。';
+        html += '<div class="action-foot" style="margin-top:0.8rem"><button onclick="copyDirectorBrief()" class="px-4 py-1.5 rounded-full font-medium text-xs bg-stone-800 text-stone-50 hover:bg-stone-700">📋 复制全部行动指令</button><span class="spec-status" id="dirStatus"></span></div>';
+        html += '<div class="text-xs text-stone-400 mt-2">把上面的指令粘进你的编码 Agent（Cursor / Claude / Copilot 等），相当于先给它一份「项目真相 + 你的约束」，避免它凭空脑补、改错地方。</div>';
+        html += '</div>';
+        currentDirectorPrompt = full;
+        return html;
+      } catch (e) { return '<div class="ov-card"><div class="font-serif text-base text-stone-800">🎯 指挥 AI 的行动清单</div><div class="text-sm text-stone-400">体检生成失败：' + esc(e.message || String(e)) + '</div></div>'; }
+    }
+    function copyDirectorBrief() { if (!currentDirectorPrompt) return; if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(currentDirectorPrompt).then(() => { const s = $('dirStatus'); if (s) s.textContent = '已复制全部指令 ✓'; }).catch(() => fallbackCopyText(currentDirectorPrompt, 'dirStatus', '已复制全部指令 ✓')); else fallbackCopyText(currentDirectorPrompt, 'dirStatus', '已复制全部指令 ✓'); }
+    function copyElText(elId, statusId) { const el = $(elId); if (!el) return; const txt = el.getAttribute('data-copy') || el.textContent; if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(() => { const s = $(statusId); if (s) s.textContent = '已复制 ✓'; }).catch(() => fallbackCopyText(txt, statusId, '已复制 ✓')); else fallbackCopyText(txt, statusId, '已复制 ✓'); }
+    function fallbackCopyText(txt, statusId, msg) { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); const s = $(statusId); if (s) s.textContent = msg || '已复制 ✓'; } catch (e) { const s = $(statusId); if (s) s.textContent = '复制失败，请手动选择'; } ta.remove(); }
     // 目录 / 模块导航：点击顶层目录或关键模块，进入该模块查看文件、子目录、符号与代表片段
     function openModule(path) {
       const p = currentProject; if (!p) return;
@@ -1926,7 +2067,15 @@
     // ---- 建议问题引导（DeepWiki 风格） ----
     function addSuggestedQuestions() {
       const box = $('suggestBox'); if (!box) return;
-      const qs = ['这个项目的整体架构是怎样的？', '作为新手，我应该从哪些文件开始读起？', '各模块/组件之间是如何协作与通信的？', '哪里是核心入口或最关键的代码逻辑？'];
+      let qs = ['这个项目的整体架构是怎样的？', '作为新手，我应该从哪些文件开始读起？', '各模块/组件之间是如何协作与通信的？', '哪里是核心入口或最关键的代码逻辑？'];
+      if (ownProject) {
+        qs = [
+          '这个项目里哪些文件最可能是 AI 一次性生成的、我需要自己先搞懂？',
+          '如果要让 AI 继续开发，我应该先和它对齐哪几件事？',
+          '哪里最容易出现「AI 改了 A 却悄悄破坏了 B」的连带风险？',
+          '作为项目主人，我该优先补哪些测试或文档，才能更好指挥 AI？'
+        ];
+      }
       suggestQuestions = qs;
       box.innerHTML = '<span class="font-sans text-xs text-stone-400 mr-1">💡 试着问：</span>' + qs.map((q, i) => '<button class="suggest-q" onclick="askSuggested(' + i + ')">' + esc(q) + '</button>').join('');
     }
