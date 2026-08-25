@@ -2,7 +2,8 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#faf6f1" />
   <title>学习你的项目 · 面向 VIBE CODING 的项目学习助手</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -166,6 +167,45 @@
     .tree-count { color:#a8a094; font-size:0.7rem; }
     .tree-file { margin:1px 0; }
     .tree-file:hover { background:#f1ece3; border-color:#d8cfc0; }
+
+    /* 弹窗内可滚动主体（桌面/移动通用，避免长内容被裁切） */
+    .snip-scroll { flex:1 1 auto; min-height:0; overflow:auto; -webkit-overflow-scrolling:touch; }
+    .module-body-pad { padding:0.5rem 1.25rem 1.5rem; }
+
+    /* ---------- 移动端适配：手机随时可用 ---------- */
+    /* Tab 栏在窄屏横向滚动，单排不换行，可滑动切换 */
+    .tab-bar { -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+    .tab-bar::-webkit-scrollbar { display:none; }
+
+    /* 图表 / 长代码 / 宽表格：允许横向滚动，不撑破页面布局 */
+    .md svg, .mermaid svg, .graph-box svg, .snip-code-wrap svg { max-width:100%; height:auto; display:block; }
+    .md table { display:block; width:max-content; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+
+    @media (max-width:640px) {
+      /* 标题缩放，避免大字号溢出 */
+      h1.font-serif { font-size:2rem !important; line-height:1.15 !important; }
+      .text-4xl { font-size:1.9rem !important; line-height:1.2 !important; }
+
+      /* Tab 单排横向滚动 */
+      .tab-bar { flex-wrap:nowrap !important; overflow-x:auto !important; gap:0.5rem !important; padding-bottom:0.35rem; }
+      .tab-btn { flex:0 0 auto; white-space:nowrap; padding-left:1rem !important; padding-right:1rem !important; }
+
+      /* 弹窗全屏化：更像原生 App，利用全部屏幕 */
+      .snip-backdrop { padding:0 !important; align-items:stretch !important; justify-content:flex-start !important; }
+      .snip-modal { max-width:100% !important; width:100% !important; height:100% !important; max-height:100% !important; border-radius:0 !important; border:none !important; }
+      .snip-modal .px-4.pt-4 { padding-top:max(1rem, env(safe-area-inset-top)) !important; }
+      .snip-code-wrap { margin:0 !important; border-radius:0 !important; }
+      .module-body-pad { padding:0.5rem 1rem 1rem !important; }
+
+      /* Token 面板缩小，避免遮挡 */
+      .token-panel { right:8px; bottom:8px; min-width:140px; font-size:0.66rem; padding:0.5rem 0.7rem; }
+
+      /* 问答应答气泡更宽 */
+      .max-w-\\[85\\%\\] { max-width:92% !important; }
+
+      /* 减少背景 fixed 在低端机的开销 */
+      body { background-attachment:scroll; }
+    }
   </style>
 </head>
 <body class="paper-grain">
@@ -333,7 +373,7 @@
             </div>
           </div>
 
-          <div class="flex gap-2 border-b border-stone-200 mb-6 flex-wrap">
+          <div class="tab-bar flex gap-2 border-b border-stone-200 mb-6 flex-wrap">
             <button data-tab="overview" onclick="switchTab('overview')" class="tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 bg-stone-800 text-stone-50">📋 概览</button>
             <button data-tab="report" onclick="switchTab('report')" class="tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 bg-transparent text-stone-600 border border-stone-300 hover:bg-stone-100">评估报告</button>
             <button data-tab="tutorial" onclick="switchTab('tutorial')" class="tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 bg-transparent text-stone-600 border border-stone-300 hover:bg-stone-100">图文教学</button>
@@ -2692,7 +2732,7 @@
         <div id="snipPath" class="font-mono text-sm text-stone-700"></div>
         <button onclick="closeSnippet()" class="px-3 py-1 rounded-full text-xs bg-stone-200 text-stone-600 hover:bg-stone-300 transition-colors">✕ 关闭</button>
       </div>
-      <div id="snipBody" class="snip-code-wrap"></div>
+      <div id="snipBody" class="snip-code-wrap snip-scroll"></div>
     </div>
   </div>
 
@@ -2703,7 +2743,7 @@
         <div id="moduleTitle" class="font-mono text-sm text-stone-700"></div>
         <button onclick="closeModule()" class="px-3 py-1 rounded-full text-xs bg-stone-200 text-stone-600 hover:bg-stone-300 transition-colors">✕ 关闭</button>
       </div>
-      <div id="moduleBody" class="snip-code-wrap" style="padding:0.5rem 1.25rem 1.5rem;"></div>
+      <div id="moduleBody" class="snip-code-wrap snip-scroll module-body-pad"></div>
     </div>
   </div>
 
@@ -2715,7 +2755,7 @@
         <button onclick="closeAuditModal()" class="px-3 py-1 rounded-full text-xs bg-stone-200 text-stone-600 hover:bg-stone-300 transition-colors">✕ 关闭</button>
       </div>
       <p class="font-sans text-xs text-stone-500 px-4 pt-1">读取最近提交与变更文件，帮你在上一条 AI 指令之后、下一条之前，快速掌握全局。</p>
-      <div id="auditBody" class="snip-code-wrap md" style="padding:0.5rem 1.25rem 1.5rem;"></div>
+      <div id="auditBody" class="snip-code-wrap md snip-scroll module-body-pad"></div>
     </div>
   </div>
 </body>
