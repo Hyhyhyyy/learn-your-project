@@ -110,6 +110,18 @@
     .lang-seg { transition:width .3s; }
     .ov-card { background:#fff; border:1px solid #e7e2da; border-radius:1rem; padding:0.9rem 1.1rem; }
     .ov-chip { display:inline-block; background:#f5f1ea; border:1px solid #e7e2da; border-radius:999px; padding:0.15rem 0.6rem; font-size:0.72rem; color:#57534e; margin:0.15rem; }
+    /* ProjCompiler 精髓：FactSignal 置信度标注 */
+    .sig-row { display:flex; flex-wrap:wrap; gap:0.4rem; align-items:center; margin-top:0.5rem; }
+    .sig-chip { font-size:0.7rem; padding:0.12rem 0.55rem; border-radius:999px; font-weight:600; border:1px solid transparent; }
+    .sig-obs { background:#eef6ee; color:#3f7a3f; border-color:#cfe6cf; }
+    .sig-inf { background:#eef3fb; color:#3f5d9a; border-color:#cfe0f2; }
+    .sig-mis { background:#fbf0ee; color:#a1483f; border-color:#f2d6d1; }
+    .fact-badge { display:inline-block; font-size:0.62rem; padding:0.04rem 0.4rem; border-radius:999px; font-weight:600; margin-left:0.35rem; vertical-align:middle; }
+    /* 项目规格 Prompt 编译器输出 */
+    .spec-pre { white-space:pre-wrap; word-break:break-word; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:0.72rem; line-height:1.55; background:#1f1b16; color:#e9e2d6; border-radius:0.75rem; padding:0.9rem 1rem; max-height:420px; overflow:auto; margin-top:0.6rem; }
+    .spec-actions { display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.6rem; align-items:center; }
+    .spec-toggle { font-size:0.72rem; color:#57534e; display:inline-flex; align-items:center; gap:0.3rem; cursor:pointer; }
+    .spec-status { font-size:0.72rem; color:#7a6a3f; }
   </style>
 </head>
 <body class="paper-grain">
@@ -646,6 +658,7 @@
           setReady(true);
           addHistoryRecord({ name: project.name, owner, repo, url: repoUrl, language: project.language||'', branch: project.branch, fileCount: files.length, treeCount: tree.length, loadedAt: Date.now() });
           try { buildCodeGraph(); } catch(e) { /* 图谱构建失败不影响主流程 */ }
+          try { scanRepoFacts(); } catch(e) { /* 智能扫描失败不影响主流程 */ }
           buildOverview();
           addSuggestedQuestions();
           switchTab('overview');
@@ -1122,15 +1135,17 @@
         healthInner = h;
       }
       box.innerHTML =
-        '<div class="ov-card"><div class="font-serif text-lg text-stone-800">📦 '+esc(p.name)+'</div>'+(p.description?'<div class="text-sm text-stone-600 mt-1">'+esc(p.description)+'</div>':'')+'<div class="text-xs text-stone-500 mt-1">主语言：'+esc(p.language||'未知')+' · 分支：'+esc(p.branch)+' · 文件总数：'+p.tree.length+' · 已抓取内容：'+p.files.length+'</div></div>'
+        '<div class="ov-card"><div class="font-serif text-lg text-stone-800">📦 '+esc(p.name)+'</div>'+(p.description?'<div class="text-sm text-stone-600 mt-1">'+esc(p.description)+'</div>':'')+'<div class="text-xs text-stone-500 mt-1">主语言：'+esc(p.language||'未知')+'<span class="fact-badge sig-obs">Observed</span> · 分支：'+esc(p.branch)+' · 文件总数：'+p.tree.length+' · 已抓取内容：'+p.files.length+'</div></div>'
         + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">语言占比</div>'+langBar+'<div class="mt-2">'+langLegend+'</div></div>'
         + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">顶层目录</div>'+topDirs+'</div>'
-        + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">依赖清单</div>'+depsHtml+'</div>'
+        + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">依赖清单 <span class="fact-badge sig-obs">Observed</span></div>'+depsHtml+'</div>'
+        + factSignalCard(p)
         + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">依赖关系图（GitNexus 风格·精简）</div><button onclick="buildDepGraph()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🔬 生成关系图</button></div><div id="depGraphBox" class="text-sm text-stone-400">点击上方按钮，从已加载文件的 import/require 语句扫描模块依赖并绘制。</div></div>'
         + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">🔍 架构健康度（GitNexus 关系智能）</div>'+healthInner+'</div>'
         + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">代码知识图谱（GitNexus 精髓·预计算关系智能）</div><button onclick="renderCodeGraph()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🕸️ 生成图谱</button></div><div id="codeGraphBox" class="text-sm text-stone-400">本地扫描函数/类定义与调用、导入关系，构建可交互的模块关系图谱（无需大模型，毫秒级）。</div></div>'
         + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">架构图（DeepWiki 精髓·大模型生成）</div><button onclick="generateArchDiagram()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🧭 生成架构图</button></div><div id="archBox" class="text-sm text-stone-400">由大模型依据仓库结构梳理主要模块与分层依赖，绘制 Mermaid 架构图。</div></div>'
-        + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">代码地图（DeepWiki 精髓·导览）</div><button onclick="generateCodeMap()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🗺️ 生成代码地图</button></div><div id="codeMapBox" class="text-sm text-stone-400">由大模型挑选最关键的文件并给出一句话职责说明，作为阅读路线导览。</div></div>';
+        + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">代码地图（DeepWiki 精髓·导览）</div><button onclick="generateCodeMap()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🗺️ 生成代码地图</button></div><div id="codeMapBox" class="text-sm text-stone-400">由大模型挑选最关键的文件并给出一句话职责说明，作为阅读路线导览。</div></div>'
+        + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">📐 项目规格 Prompt（ProjCompiler 精髓·代码→精准 Prompt）</div><button onclick="generateSpecPrompt()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">📐 生成规格 Prompt</button></div><div id="specBox" class="text-sm text-stone-400">把代码库「反向编译」成一段可被任意 AI 理解的精准项目 Prompt：自动识别入口点、模块职责、关键约束，并用 FactSignal 标注每条事实的置信度（Observed 已观测 / Inferred 推断 / Missing 缺失）。可复制或下载为 <span class="font-mono">prompt.txt</span> 直接喂给任何大模型。</div></div>';
     }
     // 解析依赖清单
     function parseDeps(files) {
@@ -1517,6 +1532,143 @@
       box.innerHTML = '<span class="font-sans text-xs text-stone-400 mr-1">💡 试着问：</span>' + qs.map((q, i) => '<button class="suggest-q" onclick="askSuggested(' + i + ')">' + esc(q) + '</button>').join('');
     }
     function askSuggested(i) { const q = suggestQuestions[i]; if (!q) return; $('chatInput').value = q; switchTab('chat'); $('chatInput').focus(); }
+
+    // ============ 项目规格 Prompt 编译器（ProjCompiler 精髓：代码→精准 Prompt） ============
+    let currentSpecText = '';
+    // 概览页「事实置信度」卡片（FactSignal 摘要）
+    function factSignalCard(p) {
+      const f = p.facts; if (!f) return '';
+      let obs = 3, inf = 0, mis = 0; // 语言/依赖/文件规模 恒为已观测
+      if (f.entrypoints && f.entrypoints.length) obs += 1;
+      if (f.modules && f.modules.length) inf += Math.min(f.modules.length, 10);
+      if (p.description) obs += 1; else if (f.hasReadme) inf += 1; else mis += 1;
+      const total = obs + inf + mis;
+      return '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-1">🔎 事实置信度（FactSignal · ProjCompiler 精髓）</div>'
+        + '<div class="sig-row">'
+        + '<span class="sig-chip sig-obs">Observed 已观测 ' + obs + '</span>'
+        + '<span class="sig-chip sig-inf">Inferred 推断 ' + inf + '</span>'
+        + '<span class="sig-chip sig-mis">Missing 缺失 ' + mis + '</span>'
+        + '</div>'
+        + '<div class="text-xs text-stone-500 mt-1">每条事实来源可追溯：<b>已观测</b>=直接读取文件/GitHub 元信息；<b>推断</b>=由代码结构分析得出；<b>缺失</b>=无法从已抓取样例确定。报告/教学/问答的引用溯源同理可验证。</div></div>';
+    }
+    // 智能仓库扫描（对应 ProjCompiler 的 Scanner 阶段）
+    function scanRepoFacts() {
+      const p = currentProject; if (!p || !p.files) return;
+      const files = p.files;
+      const ENTRY = /(^|\/)(main|index|app|server|start|cli|cmd|bin|run|entry|entrypoint|bootstrap|launcher|program)$/i;
+      const entrySet = new Set();
+      for (const f of files) {
+        const parts = f.path.split('/'); const base = parts.pop().toLowerCase(); const top = parts[0] ? parts[0].toLowerCase() : '';
+        if (ENTRY.test('/' + base) || (top && ENTRY.test('/' + top))) entrySet.add(f.path);
+        if (!f.path.includes('/') && /^(index|main|app|server|start)\./.test(base)) entrySet.add(f.path);
+        const c = f.content || '';
+        if (f.path.endsWith('.py') && /__name__\s*==\s*['"]__main__['"]/.test(c)) entrySet.add(f.path);
+        if (f.path.endsWith('.go') && /\bfunc\s+main\s*\(/.test(c)) entrySet.add(f.path);
+        if (/(?:export\s+default|module\.exports)\b/.test(c) && parts.length === 0) entrySet.add(f.path);
+      }
+      const docs = files.filter((f) => { const b = f.path.split('/').pop().toLowerCase(); return (/^readme/i.test(b)) || (/\.md$/.test(f.path) && f.path.toLowerCase().includes('doc')); }).map((f) => f.path);
+      const manifests = parseDeps(files).map((d) => d.name + (d.ver ? '@' + d.ver : ''));
+      const modMap = {};
+      for (const f of files) { const parts = f.path.split('/'); if (parts.length < 2) continue; const top = parts[0]; if (!modMap[top]) modMap[top] = []; modMap[top].push(f); }
+      const modules = Object.entries(modMap).sort((a, b) => b[1].length - a[1].length).slice(0, 10).map(([name, fs]) => {
+        const primary = fs.slice().sort((a, b) => (b.content || '').length - (a.content || '').length)[0];
+        const c = primary.content || '';
+        return { name, count: fs.length, langs: [...new Set(fs.map((x) => langOf(x.path)))], primary: primary.path, doc: firstDocComment(c), snippet: pickSnippet(c) };
+      });
+      const readme = files.find((f) => /^readme/i.test(f.path.split('/').pop()));
+      p.facts = { entrypoints: [...entrySet].sort(), docs, manifests: manifests.slice(0, 40), modules, hasReadme: !!readme, readmeExcerpt: readme ? readme.content.slice(0, 1500) : '' };
+    }
+    function firstDocComment(text) {
+      if (!text) return '';
+      const s = text.replace(/^﻿/, '');
+      let m = s.match(/^\s*(?:\/\*[\s\S]*?\*\/|"""[\s\S]*?"""|'''[\s\S]*?''')/);
+      if (m) return m[0].replace(/^\s*[\/*"']+|[\/*"']+\s*$/g, '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      const cm = [];
+      for (const ln of s.split('\n')) { const t = ln.trim(); if (!t) continue; const mm = t.match(/^(?:\/\/|#|--|%)\s*(.*)/); if (mm) { cm.push(mm[1]); if (cm.length >= 3) break; } else break; }
+      return cm.join(' ').slice(0, 200);
+    }
+    function pickSnippet(content) {
+      if (!content) return '';
+      const lines = content.split('\n').filter((l) => l.trim().length);
+      const head = lines.slice(0, 28).join('\n');
+      return head.length > 700 ? head.slice(0, 700) + '\n…' : head;
+    }
+    // 编译 PromptBundle（对应 ProjCompiler 的 SpecBuilder + PromptCompiler，应用 /init 剪枝：只保留模型易猜错的信息）
+    function compileSpecPrompt(p, opts) {
+      opts = opts || {}; const f = p.facts || {};
+      const sig = { Observed: 0, Inferred: 0, Missing: 0 };
+      const mark = (s) => { sig[s] = (sig[s] || 0) + 1; return '【' + s + '】'; };
+      const L = [];
+      L.push('# 项目规格 Prompt · ' + p.name);
+      L.push('> 由「学习你的项目」依据仓库真实内容自动编译（ProjCompiler 思想：代码→精准 Prompt）。每条事实标注来源：Observed=直接读取；Inferred=由结构推断；Missing=无法确定。');
+      L.push('');
+      L.push('## 1. 项目目标（Ground Truth）');
+      if (p.description) L.push(mark('Observed') + ' ' + p.description);
+      else if (opts.goals) L.push(mark('Inferred') + ' ' + opts.goals);
+      else if (f.hasReadme) { const fl = (f.readmeExcerpt.split('\n').find((x) => x.trim() && !/^#+\s*$/.test(x.trim())) || '').trim(); L.push(mark('Inferred') + ' ' + (fl || '详见 README')); }
+      else L.push(mark('Missing') + ' 无法从已抓取内容确定项目目标（建议补充 README 或仓库描述）。');
+      L.push('');
+      L.push('## 2. 技术画像');
+      L.push('- 主语言：' + (p.language || '未知') + ' ' + mark('Observed'));
+      L.push('- 文件规模：仓库共 ' + p.tree.length + ' 个文件，本次抓取 ' + p.files.length + ' 个用于分析 ' + mark('Observed'));
+      if (f.manifests && f.manifests.length) L.push('- 关键依赖：' + f.manifests.slice(0, 20).join('、') + ' ' + mark('Observed'));
+      L.push('');
+      L.push('## 3. 入口与启动');
+      if (f.entrypoints && f.entrypoints.length) { L.push('以下文件被识别为程序入口/启动点 ' + mark('Observed') + '：'); for (const e of f.entrypoints.slice(0, 12)) L.push('- ' + e); }
+      else L.push(mark('Missing') + ' 未能自动识别明确入口文件，可能入口在配置或未抓取目录中。');
+      L.push('');
+      L.push('## 4. 模块职责（请勿臆测，按此理解）');
+      if (f.modules && f.modules.length) { for (const m of f.modules) { const resp = (opts.moduleResps && opts.moduleResps[m.name]) || (m.doc ? m.doc : '（无显著注释，依据文件数量与命名推断）'); L.push('- **' + m.name + '** (' + m.count + ' 文件, ' + (m.langs.join('/') || '?') + ')：' + resp + ' ' + mark('Inferred')); } }
+      else L.push(mark('Missing') + ' 未提取到明显子模块。');
+      L.push('');
+      L.push('## 5. 关键约束与约定');
+      L.push('- 以上为项目事实摘要，请严格基于这些信息理解项目，不要臆造目录、文件或功能。' + mark('Inferred'));
+      L.push('- 分析基于本次抓取的 ' + p.files.length + ' 个文件样本；超大仓库可能未全覆盖，涉及未抓取路径时请先确认。' + mark('Inferred'));
+      if (f.docs && f.docs.length) L.push('- 文档入口：' + f.docs.slice(0, 5).join('、') + ' ' + mark('Observed'));
+      L.push('');
+      L.push('## 6. 代表性代码片段（最说明问题的部分）');
+      if (f.modules && f.modules.length) { for (const m of f.modules.slice(0, 5)) { if (!m.snippet) continue; L.push('### ' + m.primary); L.push('```' + (m.langs[0] || '') + '\n' + m.snippet + '\n```'); } } else L.push('（无）');
+      L.push('');
+      L.push('---');
+      L.push('将以上内容作为上下文提供给任意大模型，即可让其准确理解该项目；如需更深入的某模块，请要求其依据真实文件检索。');
+      return { text: L.join('\n'), signals: sig };
+    }
+    function generateSpecPrompt() {
+      const p = currentProject; if (!p) return;
+      const box = $('specBox'); if (!box) return;
+      if (!p.facts) { try { scanRepoFacts(); } catch (e) {} }
+      const useLLM = ($('specLLM') && $('specLLM').checked);
+      const cfg = getConfig();
+      const render = (opts) => {
+        const r = compileSpecPrompt(p, opts || {}); currentSpecText = r.text;
+        const s = r.signals;
+        box.innerHTML = '<div class="sig-row"><span class="sig-chip sig-obs">Observed ' + s.Observed + '</span><span class="sig-chip sig-inf">Inferred ' + s.Inferred + '</span><span class="sig-chip sig-mis">Missing ' + s.Missing + '</span></div>'
+          + '<pre class="spec-pre" id="specText">' + esc(r.text) + '</pre>'
+          + '<div class="spec-actions"><button onclick="copySpec()" class="px-4 py-1.5 rounded-full font-medium text-xs bg-stone-800 text-stone-50 hover:bg-stone-700">📋 复制</button>'
+          + '<button onclick="downloadSpec()" class="px-4 py-1.5 rounded-full font-medium text-xs bg-white text-stone-700 border border-stone-300 hover:bg-stone-100">⬇️ 下载 prompt.txt</button>'
+          + '<label class="spec-toggle"><input type="checkbox" id="specLLM"' + (useLLM ? ' checked' : '') + '> 用大模型润色职责说明（可选）</label>'
+          + '<span class="spec-status" id="specStatus"></span></div>';
+      };
+      if (useLLM && cfg.apiKey && cfg.baseURL) {
+        box.innerHTML = '<span class="inline-flex items-center gap-2 text-stone-500"><span class="spinner spinner-dark"></span>大模型正在理解项目并润色职责…</span>';
+        const factsText = (p.facts.modules || []).map((m) => '- ' + m.name + ' (' + m.count + ' 文件): ' + (m.doc || '无注释')).join('\n')
+          + '\n入口：' + (p.facts.entrypoints || []).join(', ') + '\n依赖：' + (p.facts.manifests || []).slice(0, 15).join(', ');
+        const prompt = '你是项目分析师。基于以下从代码库提取的真实事实，输出：\n(1) 一句话项目目标；\n(2) 每个模块的一句话职责，严格按格式「模块名 | 职责」逐行输出，不要编号、不要解释。\n\n真实事实：\n' + factsText;
+        callLLM({ apiKey: cfg.apiKey, baseURL: cfg.baseURL, model: cfg.model, temperature: 0.3, max_tokens: 800, timeout: 60000, stream: false, messages: [{ role: 'system', content: '只输出目标与模块职责列表，中文，不要解释。' }, { role: 'user', content: prompt }] })
+          .then((res) => {
+            const content = res && res.content ? res.content : '';
+            const lines = content.split('\n').map((x) => x.trim()).filter(Boolean);
+            let goals = ''; const resps = {};
+            for (const ln of lines) { const mg = ln.match(/^(?:目标[：:]?)\s*(.+)$/); if (mg && !goals) { goals = mg[1].replace(/^["'】]/, ''); continue; } const mp = ln.match(/^([^\s|]+)\s*\|\s*(.+)$/); if (mp) resps[mp[1].trim()] = mp[2].trim(); }
+            render({ goals: goals || undefined, moduleResps: resps });
+          })
+          .catch(() => render()); // 优雅降级到确定性编译
+      } else { render(); }
+    }
+    function specStatus(msg) { const s = $('specStatus'); if (s) s.textContent = msg; }
+    function copySpec() { if (!currentSpecText) return; if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(currentSpecText).then(() => specStatus('已复制到剪贴板 ✓')).catch(() => fallbackCopy()); else fallbackCopy(); }
+    function fallbackCopy() { const ta = document.createElement('textarea'); ta.value = currentSpecText; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); specStatus('已复制 ✓'); } catch (e) { specStatus('复制失败，请手动选择'); } ta.remove(); }
+    function downloadSpec() { if (!currentSpecText) return; const blob = new Blob([currentSpecText], { type: 'text/plain;charset=utf-8' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (currentProject ? currentProject.name : 'project') + '.prompt.txt'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
 
     // ---------- 浮动本页目录（TOC） ----------
     let tocSpy = null;
