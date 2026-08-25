@@ -31,7 +31,7 @@
 
 ## 使用
 
-直接打开 [GitHub Pages 站点](#) 即可：
+本项目为纯静态站点，部署到 GitHub Pages 后访问 `https://<你的用户名>.github.io/<仓库名>/`（由 `gh-pages` 分支托管）。本地预览：
 
 1. 「模型配置」填写 API Key / 基地址 / 模型 → 点击「验证配置」。
 2. 「加载仓库」粘贴 `https://github.com/owner/repo`；若是你自己的 VibeCoding 项目，勾选「🎯 这是我自己的 VibeCoding 项目」→ 点击「加载仓库」。
@@ -48,9 +48,8 @@ python -m http.server 8000
 
 ## 演示（Demo）
 
-> 录制一段 30 秒演示 GIF 放在这里效果最佳（小红书 / 开源社区传播很吃这个）：
+> 演示 GIF 待录制（发布前补充到 `docs/demo.gif`）。推荐录制流程：
 > ① 粘贴一个 VibeCoding 项目仓库 → ② 勾选「我自己的 VibeCoding 项目」→ ③ 看「指挥 AI 的行动清单」→ ④ 点「AI 变更审计」→ ⑤ 在「项目问答」追问。
-> 占位：`docs/demo.gif`（待补充）。
 
 ## 与 DeepWiki / Zread 对比
 
