@@ -87,6 +87,23 @@
     .toc-item:hover { background:#f5f1ea; color:#57534e; }
     .toc-item.active { color:#4f6e3e; border-left-color:#8b9d77; background:rgba(139,157,119,0.10); font-weight:600; }
     .toc-empty { color:#a8a29e; font-size:0.7rem; }
+    /* 代码地图 / 引用溯源 / 建议问题 / 代码片段弹窗 */
+    .code-map-item { display:flex; gap:0.6rem; padding:0.45rem 0.6rem; border-radius:0.6rem; background:#fff; border:1px solid #efe9e0; align-items:baseline; }
+    .cm-path { font-family:ui-monospace,monospace; font-size:0.78rem; color:#6f7d54; font-weight:600; white-space:nowrap; }
+    .cm-desc { font-size:0.82rem; color:#57534e; }
+    .cite-row { margin-top:0.55rem; display:flex; flex-wrap:wrap; gap:0.35rem; align-items:center; }
+    .cite-label { font-size:0.72rem; color:#a8a29e; }
+    .cite-chip { font-size:0.72rem; padding:0.15rem 0.55rem; border-radius:999px; background:#f0f3ea; border:1px solid #d8e0c8; color:#4f6e3e; cursor:pointer; transition:background .2s; }
+    .cite-chip:hover { background:#e3e9d4; }
+    .suggest-q { font-size:0.78rem; padding:0.3rem 0.75rem; border-radius:999px; background:#fff; border:1px solid #e7e2da; color:#57534e; cursor:pointer; transition:background .2s; }
+    .suggest-q:hover { background:#f5f1ea; }
+    .snip-backdrop { position:fixed; inset:0; background:rgba(40,30,22,0.45); z-index:60; display:flex; align-items:center; justify-content:center; padding:1.5rem; }
+    .snip-modal { background:#faf6f1; border:1px solid #e7e2da; border-radius:1rem; max-width:780px; width:100%; max-height:80vh; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 20px 60px -20px rgba(60,40,28,0.4); }
+    .snip-code-wrap { overflow:auto; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.8rem; line-height:1.5; background:#292524; color:#f5f1ea; padding:0.8rem 0; border-radius:0.6rem; margin:0 1rem 1rem; }
+    .snip-code-wrap > div { display:flex; padding:0 0.9rem; white-space:pre; }
+    .snip-ln { width:3rem; flex:none; text-align:right; padding-right:0.8rem; color:#8a8378; user-select:none; }
+    .snip-code { flex:1; }
+    .snip-hl { background:rgba(139,157,119,0.22); }
     @media (max-width:1024px){ .toc-panel{ display:none !important; } }
     /* 概览仪表盘 */
     .lang-bar { display:flex; height:14px; border-radius:7px; overflow:hidden; background:#efe9e1; }
@@ -246,6 +263,7 @@
           </div>
 
           <div id="tab-chat" class="tab-pane hidden">
+            <div id="suggestBox" class="mb-3 flex flex-wrap gap-2 items-center"></div>
             <div id="chatLog" class="space-y-4 mb-4 max-h-[460px] overflow-y-auto pr-2"></div>
             <div class="flex gap-3 items-end">
               <input id="chatInput" type="text" disabled onkeydown="if(event.key==='Enter')sendQuestion()" class="flex-1 px-5 py-3 bg-stone-100 border border-stone-200 rounded-full text-stone-400 placeholder:text-stone-300 transition-all duration-300" placeholder="加载完成后即可提问…" />
@@ -628,6 +646,8 @@
           setReady(true);
           addHistoryRecord({ name: project.name, owner, repo, url: repoUrl, language: project.language||'', branch: project.branch, fileCount: files.length, treeCount: tree.length, loadedAt: Date.now() });
           buildOverview();
+          try { buildCodeGraph(); } catch(e) { /* 图谱构建失败不影响主流程 */ }
+          addSuggestedQuestions();
           switchTab('overview');
         } finally { clearTimeout(timer); }
       } catch (e) {
@@ -722,7 +742,7 @@
     // ---------- Prompts ----------
     const EVAL_PROMPT = '你是一位有 15 年实战经验的首席软件架构师，正在为团队做一次严肃的项目评审。请基于下方项目文件（目录结构 + 关键文件内容），用中文撰写一份专业、可落地的项目评估报告（Markdown）。\n\n【评估框架】以 ISO/IEC 25010 软件产品质量模型为骨架，逐项给判断与证据，不要泛泛而谈：功能适合性（完整性/正确性/适宜性）、性能效率（时间行为/资源利用/容量）、兼容性（共存/互操作性）、可靠性（成熟度/可用性/容错/可恢复）、安全性（保密性/完整性/可追溯，按 OWASP 视角看）、可维护性（模块化/可分析性/可修改性/可测试性/可复用性，结合圈复杂度、重复率、命名、分层、依赖方向谈）、可移植性（适应性/可安装性/可替换性）。\n\n【架构视角】用 C4 的 Context/Container/Component 视角描述系统结构；能识别的技术债按 SQALE 思路分类。\n\n【结构与逻辑】先给一句话结论与总体评级，再展开。章节：1) 一句话结论与评级（1–10 分，附打分依据）；2) 项目概览；3) 技术栈与依赖；4) 架构与目录结构（引用真实目录/文件）；5) 按 ISO/IEC 25010 的质量评估——用表格：维度｜判断｜证据文件｜改进点；6) 代码质量与可维护性（具体到文件/函数）；7) 安全性考量；8) 文档完备度；9) 核心优势 / 主要风险（各 3–5 条，带证据）；10) 可落地改进建议（按投入/收益排序，标优先级）；11) 新手学习难度评级。每章末尾给一句风险或亮点小结。\n\n【写作风格——蒸馏过的老程序员，不要 AI 腔】直接给判断，不绕弯、不铺垫；禁用"值得注意的是/此外/综上所述/不仅…而且…"。每个论断落到具体文件名、目录或行级证据，没证据就说"未在已加载文件中找到证据"。句子长短交错，允许一句一段，允许带个人判断和轻微锋芒。不要三段式排比、不要破折号堆砌、不要满屏加粗、不要 emoji 装饰标题、不要"从 X 到 Y"的虚假范围、不要通用积极结尾。评级要有取舍，敢说差在哪。如真有信息量可用 ```mermaid 流程图，但图内节点与连线标签必须中文；若拿不准图能不能画清楚，就用表格或文字代替，禁止输出空图、乱码图、装饰图。\n\n【语言】所有正文、说明、图表节点标签、链接文字一律使用中文；代码、命令、API、文件名、URL 保留英文原样。';
     const TUTORIAL_PROMPT = '你是带过无数新人的资深工程师兼老教师，要为零基础学习者把这个项目讲透。基于下方项目的技术栈与结构，撰写图文并茂、循序渐进的入门教学（中文 Markdown），教学设计要有理论支撑。\n\n【教学框架：5E 模型 + 布鲁姆认知分层】按 5E 组织主线，每阶段标注对应布鲁姆层级（记忆/理解/应用/分析/评价/创造，由低阶到高阶递进）：1) 引入 Engage（记忆/理解）：用真实场景或项目要解决的具体问题勾起好奇，连接已有经验；2) 探索 Explore（理解/应用）：带学习者看项目里最关键的 2–3 个文件/目录，边看边问；3) 解释 Explain（理解/分析）：讲清核心概念与技术，每个用"这是什么 / 为什么需要 / 在本项目里怎么用"三段式；4) 拓展 Elaborate（分析/评价/创造）：给一个可动手的小练习或改造思路，让概念迁移；5) 评价 Evaluate（评价/创造）：给自测清单，让学习者确认掌握。\n\n【认知负荷控制】遵循认知负荷理论，复杂处给"已完成范例（worked example）"并分段；按维果茨基最近发展区搭脚手架，从能懂的第一步起步逐步抬高。知识按事实性/概念性/程序性/元认知四类区分，别混着讲。\n\n【结构清晰】开篇给一张学习路径图（可用 ```mermaid 流程图）。每章用 ## 标题，关键概念加粗但克制，适当用列表。整体按布鲁姆由低到高递进，别一上来就讲架构创造。\n\n【权威学习资源】末尾给【权威学习资源】清单，分类列真实可访问资源：GitHub 仓库用真实知名仓库如 [freeCodeCamp](https://github.com/freeCodeCamp/freeCodeCamp)；官方网站给文档地址；B 站搜索用 [关键词](https://search.bilibili.com/all?keyword=关键词)。\n\n【写作风格——蒸馏过的老教师，不要 AI 腔】语气亲切有干货，像在白板前带人，不像念稿。禁用"值得注意的是/此外/综上所述/不仅…而且…"；不堆三段式，不滥用破折号、加粗、emoji。难处允许说"这块第一次看都会懵，没关系"，但紧接着给具体抓手。例子多用本项目真实文件/函数名，少用泛化比喻。结尾不要通用鸡汤，给一句实在的下一步。\n\n【语言与图表】所有正文、说明、图表节点标签、链接文字一律使用中文；代码、命令、API、文件名、URL 保留英文原样。学习路径图必须用 ```mermaid 流程图且节点与连线标签全部中文；若对图表语法不确定，改用有序列表或表格，禁止输出空图、装饰图、渲染不出来的图。';
-    const ASK_PROMPT = '你是基于项目知识库回答问题的助手。只能用下方【项目内容摘录】中的信息回答，用中文；摘录里没有就说"在项目内容中未找到相关信息"，不要编造、补全或泛化。回答简洁、直接，注明引用的文件路径。禁用"值得注意的是/此外/综上"这类连接词，不要三段式排比。\n\n【语言】所有回答必须使用中文；代码、命令、API、文件名、URL 保留英文原样。';
+    const ASK_PROMPT = '你是基于项目知识库回答问题的助手。只能用下方【项目内容摘录】中的信息回答，用中文；摘录里没有就说"在项目内容中未找到相关信息"，不要编造、补全或泛化。回答简洁、直接，注明引用的文件路径。禁用"值得注意的是/此外/综上"这类连接词，不要三段式排比。\n\n【引用溯源（必须）】凡引用具体代码或明确结论，请用方括号标注来源：格式为 [相对路径:行号] 或 [相对路径:起始行-结束行]，例如 [src/app.js:42] 或 [utils/parse.py:10-15]；只引用【项目内容摘录】里真实存在的文件路径与行号（行号对应摘录中的实际行），关键结论尽量各附一个引用。若无法定位到具体行，至少标注 [文件路径]。\n\n【语言】所有回答必须使用中文；代码、命令、API、文件名、URL 保留英文原样。';
 
     // ---------- Markdown 渲染 ----------
     function renderMD(md) { return DOMPurify.sanitize(marked.parse(md||'')); }
@@ -928,7 +948,8 @@
       try {
         const chunks = retrieve(currentProject.index, q, 6);
         if (chunks.length === 0) { placeholder.remove(); addChatBubble('assistant', '在项目内容中未找到相关信息（可能是文件未被加载，或问题超出已抓取范围）。', []); return; }
-        const ctx = chunks.map((c)=>'文件：'+c.path+'\n```\n'+c.text+'\n```').join('\n\n');
+        const gctx = (currentProject.graph) ? getGraphContext(q) : '';
+        const ctx = chunks.map((c)=>'文件：'+c.path+'\n```\n'+c.text+'\n```').join('\n\n') + (gctx ? '\n\n【代码知识图谱关联（Graph-RAG 预计算关系）】\n'+gctx : '');
         placeholder.remove();
         const wrap = document.createElement('div');
         wrap.className = 'fade-in flex justify-start';
@@ -966,6 +987,15 @@
         body.innerHTML = renderMD(content);
         const s = document.createElement('p'); s.className = 'font-sans text-xs text-stone-400 mt-2';
         s.textContent = '📎 参考：' + [...new Set(chunks.map((c)=>c.path))].slice(0,5).join(' · '); inner.appendChild(s);
+        // 引用溯源（DeepWiki 精髓）：解析 [path:line] 渲染可点击溯源
+        const cites = parseCitations(content);
+        currentCites = cites;
+        if (cites.length) {
+          const cr = document.createElement('div'); cr.className = 'cite-row';
+          cr.innerHTML = '<span class="cite-label">🔗 引用溯源：</span>' + cites.map((c,i)=>{ const label = c.path.split('/').pop()+':'+c.start+(c.end!==c.start?('-'+c.end):''); return '<button class="cite-chip" onclick="showSnippetAt('+i+')">'+esc(label)+'</button>'; }).join('');
+          inner.appendChild(cr);
+        }
+        addSuggestedQuestions();
         scrollChat();
       } catch (e) {
         placeholder.remove();
@@ -1079,7 +1109,10 @@
         + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">语言占比</div>'+langBar+'<div class="mt-2">'+langLegend+'</div></div>'
         + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">顶层目录</div>'+topDirs+'</div>'
         + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">依赖清单</div>'+depsHtml+'</div>'
-        + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">依赖关系图（GitNexus 风格·精简）</div><button onclick="buildDepGraph()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🔬 生成关系图</button></div><div id="depGraphBox" class="text-sm text-stone-400">点击上方按钮，从已加载文件的 import/require 语句扫描模块依赖并绘制。</div></div>';
+        + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">依赖关系图（GitNexus 风格·精简）</div><button onclick="buildDepGraph()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🔬 生成关系图</button></div><div id="depGraphBox" class="text-sm text-stone-400">点击上方按钮，从已加载文件的 import/require 语句扫描模块依赖并绘制。</div></div>'
+        + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">代码知识图谱（GitNexus 精髓·预计算关系智能）</div><button onclick="renderCodeGraph()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🕸️ 生成图谱</button></div><div id="codeGraphBox" class="text-sm text-stone-400">本地扫描函数/类定义与调用、导入关系，构建可交互的模块关系图谱（无需大模型，毫秒级）。</div></div>'
+        + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">架构图（DeepWiki 精髓·大模型生成）</div><button onclick="generateArchDiagram()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🧭 生成架构图</button></div><div id="archBox" class="text-sm text-stone-400">由大模型依据仓库结构梳理主要模块与分层依赖，绘制 Mermaid 架构图。</div></div>'
+        + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">代码地图（DeepWiki 精髓·导览）</div><button onclick="generateCodeMap()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🗺️ 生成代码地图</button></div><div id="codeMapBox" class="text-sm text-stone-400">由大模型挑选最关键的文件并给出一句话职责说明，作为阅读路线导览。</div></div>';
     }
     // 解析依赖清单
     function parseDeps(files) {
@@ -1128,6 +1161,227 @@
       }, 30);
     }
 
+    // ============ 代码知识图谱（GitNexus 精髓：本地预计算关系智能） ============
+    let currentCites = [];
+    let suggestQuestions = [];
+    function buildCodeGraph() {
+      const p = currentProject; if (!p || !p.files || !p.files.length) return;
+      const extFamily = (path) => {
+        const ext = fileExt(path);
+        if (['js','jsx','ts','tsx','mjs','cjs','vue','svelte'].includes(ext)) return 'js';
+        if (ext === 'py') return 'py';
+        if (ext === 'go') return 'go';
+        if (['java','kt','cs','cpp','c','h','hpp','cc'].includes(ext)) return 'c';
+        if (ext === 'rs') return 'rs';
+        if (ext === 'rb') return 'rb';
+        if (ext === 'php') return 'php';
+        return null;
+      };
+      const defRe = {
+        js: [
+          /\bfunction\s+([A-Za-z_$][\w$]*)/g,
+          /\bclass\s+([A-Za-z_$][\w$]*)/g,
+          /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?function/g,
+          /\b([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/g,
+          /\b([A-Za-z_$][\w$]*)\s*:\s*(?:async\s*)?\([^)]*\)\s*=>/g,
+        ],
+        py: [/\bdef\s+([A-Za-z_][\w]*)/g, /\bclass\s+([A-Za-z_][\w]*)/g],
+        go: [/\bfunc\s+(?:\([^)]*\)\s*)?([A-Za-z_][\w]*)/g, /\btype\s+([A-Za-z_][\w]*)\s+(?:struct|interface)/g],
+        c: [
+          /\b(?:class|struct|interface|enum)\s+([A-Za-z_][\w]*)/g,
+          /\b[A-Za-z_][\w]*(?:\s*<[^>]*>)?\s+([A-Za-z_][\w]*)\s*\([^;]*\)\s*(?:const)?\s*\{/g,
+        ],
+        rs: [/\bfn\s+([A-Za-z_][\w]*)/g, /\b(?:pub\s+)?struct\s+([A-Za-z_][\w]*)/g, /\b(?:pub\s+)?(?:trait|enum|impl)\s+([A-Za-z_][\w]*)/g],
+        rb: [/\bdef\s+([A-Za-z_][\w]*)/g, /\bclass\s+([A-Za-z_][\w]*)/g],
+        php: [/\bfunction\s+([A-Za-z_][\w]*)/g, /\bclass\s+([A-Za-z_][\w]*)/g],
+      };
+      const STOP = new Set(['if','for','while','switch','catch','function','return','typeof','await','new','do','else','case','default','try','finally','with','void','sizeof','instanceof']);
+      const symbols = []; const seenSym = new Set(); const nameToFile = new Map();
+      for (const f of p.files) {
+        const fam = extFamily(f.path); if (!fam) continue;
+        const content = f.content || '';
+        for (const re of (defRe[fam] || [])) {
+          re.lastIndex = 0; let m;
+          while ((m = re.exec(content)) !== null) {
+            const name = m[1];
+            if (!name || name.length < 2) continue;
+            if (STOP.has(name.toLowerCase())) continue;
+            const key = f.path + '#' + name;
+            if (seenSym.has(key)) continue;
+            seenSym.add(key);
+            let ln = 1; const idx = content.indexOf(m[0]);
+            if (idx >= 0) ln = content.slice(0, idx).split('\n').length;
+            const kind = /class|struct|interface|trait|enum|type/i.test(m[0]) ? 'type' : 'func';
+            symbols.push({ name, file: f.path, line: ln, kind });
+            if (!nameToFile.has(name.toLowerCase())) nameToFile.set(name.toLowerCase(), new Set());
+            nameToFile.get(name.toLowerCase()).add(f.path);
+          }
+        }
+      }
+      const callRe = /\b([A-Za-z_$][\w$]*)\s*\(/g;
+      const calls = []; const callSet = new Set(); const symNames = new Set(nameToFile.keys());
+      for (const f of p.files) {
+        const content = f.content || ''; let m; callRe.lastIndex = 0;
+        while ((m = callRe.exec(content)) !== null) {
+          const nm = m[1].toLowerCase();
+          if (!symNames.has(nm)) continue;
+          for (const tf of nameToFile.get(nm)) {
+            if (tf === f.path) continue;
+            const key = f.path + '|CALLS|' + tf + '|' + nm;
+            if (callSet.has(key)) continue;
+            callSet.add(key); calls.push({ from: f.path, to: tf, sym: m[1] });
+          }
+        }
+      }
+      const impRe = /(?:^|[^.\w])(?:import\s+(?:[\s\S]*?from\s+)?|require\s*\(\s*|from\s+|include\s+|using\s+|use\s+)(["'])([^"'\n]+)\1/g;
+      const imports = []; const impSet = new Set();
+      for (const f of p.files) {
+        const content = f.content || ''; let m; impRe.lastIndex = 0;
+        while ((m = impRe.exec(content)) !== null) {
+          const tgt = m[2];
+          if (/^(https?:|\/|\.)|json|css|svg|png|jpg|jpeg|gif|woff|ttf|wasm$/i.test(tgt)) continue;
+          const tmod = tgt.replace(/^\.\/|^\.\.\//, '').split('/')[0] || tgt;
+          const top = f.path.split('/')[0];
+          if (top && tmod && top !== tmod) {
+            const key = top + '|IMP|' + tmod;
+            if (!impSet.has(key)) { impSet.add(key); imports.push({ from: top, to: tmod }); }
+          }
+        }
+      }
+      p.graph = { symbols: symbols.slice(0, 600), calls: calls.slice(0, 800), imports, nameToFile, builtAt: Date.now() };
+    }
+    // Graph-RAG：用知识图谱按关系筛选相关文件与边，注入结构化上下文
+    function getGraphContext(query) {
+      const p = currentProject; if (!p || !p.graph) return '';
+      const g = p.graph; const ql = query.toLowerCase();
+      const hits = new Set();
+      for (const s of g.symbols) { if (s.name.toLowerCase().includes(ql) || s.file.toLowerCase().includes(ql)) hits.add(s.file); }
+      const deg = new Map(); const bump = (f) => deg.set(f, (deg.get(f) || 0) + 1);
+      for (const c of g.calls) { bump(c.from); bump(c.to); }
+      for (const i of g.imports) { bump(i.from); bump(i.to); }
+      let related = [...hits];
+      if (related.length < 4) { related = related.concat([...deg.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map((x) => x[0])); }
+      related = [...new Set(related)].slice(0, 8);
+      if (!related.length) return '';
+      const lines = ['相关文件（由代码知识图谱按关系筛选）：'];
+      for (const f of related) lines.push('- ' + f);
+      lines.push(''); lines.push('关系（IMPORTS / CALLS）：');
+      let cnt = 0;
+      for (const c of g.calls) { if (related.includes(c.from) && related.includes(c.to)) { lines.push('- ' + c.from + ' 调用 ' + c.to + ' 的 ' + c.sym + '()'); if (++cnt > 40) break; } }
+      for (const i of g.imports) { if (related.includes(i.from) && related.includes(i.to)) { lines.push('- ' + i.from + ' 导入 ' + i.to); if (++cnt > 60) break; } }
+      return lines.join('\n');
+    }
+    function renderCodeGraph() {
+      const p = currentProject; if (!p) return;
+      const box = $('codeGraphBox'); if (!box) return;
+      if (!p.graph) buildCodeGraph();
+      if (!p.graph || (!p.graph.calls.length && !p.graph.imports.length)) { box.innerHTML = '<span class="toc-empty">未在已加载文件中识别到足够的调用/导入关系（样本较小或语言暂不支持）。</span>'; return; }
+      box.innerHTML = '<span class="inline-flex items-center gap-2 text-stone-500"><span class="spinner spinner-dark"></span>构建知识图谱中…</span>';
+      setTimeout(() => {
+        const deg = new Map(); const bump = (f) => deg.set(f, (deg.get(f) || 0) + 1);
+        for (const c of p.graph.calls) { bump(c.from); bump(c.to); }
+        for (const i of p.graph.imports) { bump(i.from); bump(i.to); }
+        let nodes = [...deg.entries()].sort((a, b) => b[1] - a[1]).slice(0, 26).map((x) => x[0]);
+        if (!nodes.length) nodes = [...new Set(p.graph.calls.map((c) => c.from).concat(p.graph.calls.map((c) => c.to)))].slice(0, 26);
+        const nodeSet = new Set(nodes);
+        const clean = (s) => s.replace(/[^A-Za-z0-9_]/g, '_');
+        const nodeDefs = nodes.map((n) => '  ' + clean(n) + '["' + esc(n.split('/').pop()) + '"]').join('\n');
+        const edges = [];
+        for (const c of p.graph.calls) if (nodeSet.has(c.from) && nodeSet.has(c.to) && c.from !== c.to) edges.push('  ' + clean(c.from) + ' -->|调用| ' + clean(c.to));
+        for (const i of p.graph.imports) if (nodeSet.has(i.from) && nodeSet.has(i.to) && i.from !== i.to) edges.push('  ' + clean(i.from) + ' -.导入.-> ' + clean(i.to));
+        const lines = 'flowchart LR\n' + nodeDefs + '\n' + edges.slice(0, 120).join('\n');
+        box.innerHTML = '<pre class="md-fallback" style="max-height:440px;overflow:auto"><code class="language-mermaid">' + esc(lines) + '</code></pre>';
+        const code = box.querySelector('code.language-mermaid');
+        if (code && window.mermaid) { const wrap = document.createElement('div'); box.innerHTML = ''; box.appendChild(wrap); wrap.className = 'md'; renderMermaid(wrap); }
+      }, 30);
+    }
+    // ---- 引用溯源（DeepWiki 精髓） ----
+    function parseCitations(text) {
+      const out = []; const seen = new Set();
+      const re = /\[([^\]\s]+?):(\d+)(?:-(\d+))?\]/g; let m;
+      while ((m = re.exec(text)) !== null) {
+        const path = m[1]; const start = parseInt(m[2], 10); const end = m[3] ? parseInt(m[3], 10) : start;
+        const key = path + ':' + start + '-' + end;
+        if (seen.has(key)) continue; seen.add(key);
+        out.push({ path, start, end });
+      }
+      return out;
+    }
+    function resolveFile(path) {
+      const p = currentProject; if (!p) return null;
+      return p.files.find((x) => x.path === path)
+        || p.files.find((x) => x.path.endsWith('/' + path))
+        || p.files.find((x) => x.path.split('/').pop() === path.split('/').pop())
+        || null;
+    }
+    function showSnippet(path, start, end) {
+      const f = resolveFile(path); if (!f) { alert('未找到文件：' + path + '（可能未被抓取）'); return; }
+      const lines = (f.content || '').split('\n');
+      const s = Math.max(1, start - 8), e = Math.min(lines.length, (end || start) + 8);
+      let html = '';
+      for (let i = s; i <= e; i++) { const hl = (i >= start && i <= (end || start)) ? ' class="snip-hl"' : ''; html += '<div' + hl + '><span class="snip-ln">' + i + '</span><span class="snip-code">' + esc(lines[i - 1] || '') + '</span></div>'; }
+      $('snipPath').textContent = f.path + '  （第 ' + s + '–' + e + ' 行）';
+      $('snipBody').innerHTML = html;
+      $('snippetModal').classList.remove('hidden');
+    }
+    function closeSnippet() { $('snippetModal').classList.add('hidden'); }
+    function showSnippetAt(i) { const c = currentCites[i]; if (c) showSnippet(c.path, c.start, c.end); }
+    // ---- LLM 架构图 / 代码地图（DeepWiki 精髓） ----
+    function extractMermaid(text) {
+      if (!text) return null;
+      const m = text.match(/```(?:mermaid)?\s*\n([\s\S]*?)```/i);
+      let body = m ? m[1] : text;
+      body = (body || '').trim();
+      if (!body) return null;
+      const first = body.split('\n')[0] || '';
+      if (MERMAID_KW.test(first)) return body;
+      if (MERMAID_KW.test(body)) return body;
+      return null;
+    }
+    async function generateArchDiagram() {
+      const cfg = getConfig(); const p = currentProject; if (!p) return;
+      const box = $('archBox'); if (!box) return;
+      if (!cfg.apiKey || !cfg.baseURL) { box.innerHTML = '<span class="toc-empty">请先在「模型配置」填写 API Key 与基地址。</span>'; return; }
+      if (p.archDiagram) { box.innerHTML = '<pre class="md-fallback" style="max-height:440px;overflow:auto"><code class="language-mermaid">' + esc(p.archDiagram) + '</code></pre>'; if (window.mermaid) { const w = document.createElement('div'); box.innerHTML = ''; box.appendChild(w); w.className = 'md'; renderMermaid(w); } return; }
+      box.innerHTML = '<span class="inline-flex items-center gap-2 text-stone-500"><span class="spinner spinner-dark"></span>大模型正在梳理架构…</span>';
+      try {
+        const struct = p.tree.slice(0, 220).join('\n');
+        const entryHints = (p.graph ? p.graph.symbols.filter((s) => s.kind === 'type').slice(0, 18).map((s) => s.file + ':' + s.name) : []).join('; ');
+        const prompt = '你是资深软件架构师。基于以下仓库目录结构，用 Mermaid 画一张「架构图」，展示主要模块/分层以及它们之间的依赖或数据流。只输出一个 ```mermaid 代码块（建议 flowchart LR 或 graph TD），节点与连线标签全部用中文（文件名可保留英文）。不要解释、不要多余文字。\n\n仓库结构：\n```\n' + struct + '\n```\n关键类型/入口：' + (entryHints || '（无）');
+        const { content } = await callLLM({ apiKey: cfg.apiKey, baseURL: cfg.baseURL, model: cfg.model, temperature: 0.4, max_tokens: 1200, timeout: 60000, stream: false, messages: [{ role: 'system', content: '只输出 Mermaid 图，中文标签，不要解释。' }, { role: 'user', content: prompt }] });
+        const mermaid = extractMermaid(content);
+        if (!mermaid) { box.innerHTML = '<span class="toc-empty">大模型未返回有效架构图（可重试）。</span>'; return; }
+        p.archDiagram = mermaid;
+        box.innerHTML = '<pre class="md-fallback" style="max-height:440px;overflow:auto"><code class="language-mermaid">' + esc(mermaid) + '</code></pre>';
+        if (window.mermaid) { const w = document.createElement('div'); box.innerHTML = ''; box.appendChild(w); w.className = 'md'; renderMermaid(w); }
+      } catch (e) { box.innerHTML = '<span class="toc-empty">生成失败：' + esc(e.message || String(e)) + '</span>'; }
+    }
+    async function generateCodeMap() {
+      const cfg = getConfig(); const p = currentProject; if (!p) return;
+      const box = $('codeMapBox'); if (!box) return;
+      if (!cfg.apiKey || !cfg.baseURL) { box.innerHTML = '<span class="toc-empty">请先配置 API。</span>'; return; }
+      if (p.codeMap) { box.innerHTML = renderCodeMap(p.codeMap); return; }
+      box.innerHTML = '<span class="inline-flex items-center gap-2 text-stone-500"><span class="spinner spinner-dark"></span>大模型正在绘制代码地图…</span>';
+      try {
+        const struct = p.tree.slice(0, 170).join('\n');
+        const prompt = '你是代码向导。基于仓库结构，挑出 8–12 个“最关键的文件或目录”，给一句话中文说明它负责什么、为什么重要。严格按如下格式每行一条：\n`路径 | 一句话说明`\n例如：`src/server.js | 服务入口，启动 HTTP 并注册路由`\n只输出这样的列表，不要编号、不要多余文字、不要解释。\n\n仓库结构：\n```\n' + struct + '\n```';
+        const { content } = await callLLM({ apiKey: cfg.apiKey, baseURL: cfg.baseURL, model: cfg.model, temperature: 0.4, max_tokens: 900, timeout: 60000, stream: false, messages: [{ role: 'system', content: '只输出 “路径 | 说明” 列表，中文，不要解释。' }, { role: 'user', content: prompt }] });
+        const items = [];
+        for (const line of content.split('\n')) { const mm = line.match(/`?([^`|]+?)`?\s*\|\s*(.+)/); if (mm) items.push({ path: mm[1].trim(), desc: mm[2].trim() }); }
+        if (!items.length) { box.innerHTML = '<span class="toc-empty">大模型未返回有效代码地图（可重试）。</span>'; return; }
+        p.codeMap = items; box.innerHTML = renderCodeMap(items);
+      } catch (e) { box.innerHTML = '<span class="toc-empty">生成失败：' + esc(e.message || String(e)) + '</span>'; }
+    }
+    function renderCodeMap(items) { return '<div class="space-y-2">' + items.map((it) => '<div class="code-map-item"><span class="cm-path">' + esc(it.path) + '</span><span class="cm-desc">' + esc(it.desc) + '</span></div>').join('') + '</div>'; }
+    // ---- 建议问题引导（DeepWiki 风格） ----
+    function addSuggestedQuestions() {
+      const box = $('suggestBox'); if (!box) return;
+      const qs = ['这个项目的整体架构是怎样的？', '作为新手，我应该从哪些文件开始读起？', '各模块/组件之间是如何协作与通信的？', '哪里是核心入口或最关键的代码逻辑？'];
+      suggestQuestions = qs;
+      box.innerHTML = '<span class="font-sans text-xs text-stone-400 mr-1">💡 试着问：</span>' + qs.map((q, i) => '<button class="suggest-q" onclick="askSuggested(' + i + ')">' + esc(q) + '</button>').join('');
+    }
+    function askSuggested(i) { const q = suggestQuestions[i]; if (!q) return; $('chatInput').value = q; switchTab('chat'); $('chatInput').focus(); }
+
     // ---------- 浮动本页目录（TOC） ----------
     let tocSpy = null;
     function buildTOC(boxId) {
@@ -1159,5 +1413,16 @@
 
     if (window.mermaid) { try { mermaid.initialize({ startOnLoad:false }); } catch(e){} }
   </script>
+
+  <!-- 代码引用溯源弹窗 -->
+  <div id="snippetModal" class="snip-backdrop hidden" onclick="if(event.target===this)closeSnippet()">
+    <div class="snip-modal">
+      <div class="flex items-center justify-between px-4 pt-4">
+        <div id="snipPath" class="font-mono text-sm text-stone-700"></div>
+        <button onclick="closeSnippet()" class="px-3 py-1 rounded-full text-xs bg-stone-200 text-stone-600 hover:bg-stone-300 transition-colors">✕ 关闭</button>
+      </div>
+      <div id="snipBody" class="snip-code-wrap"></div>
+    </div>
+  </div>
 </body>
 </html>
