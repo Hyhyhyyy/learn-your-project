@@ -645,8 +645,8 @@
           $('workspace').scrollIntoView({ behavior:'smooth' });
           setReady(true);
           addHistoryRecord({ name: project.name, owner, repo, url: repoUrl, language: project.language||'', branch: project.branch, fileCount: files.length, treeCount: tree.length, loadedAt: Date.now() });
-          buildOverview();
           try { buildCodeGraph(); } catch(e) { /* 图谱构建失败不影响主流程 */ }
+          buildOverview();
           addSuggestedQuestions();
           switchTab('overview');
         } finally { clearTimeout(timer); }
@@ -740,8 +740,8 @@
     }
 
     // ---------- Prompts ----------
-    const EVAL_PROMPT = '你是一位有 15 年实战经验的首席软件架构师，正在为团队做一次严肃的项目评审。请基于下方项目文件（目录结构 + 关键文件内容），用中文撰写一份专业、可落地的项目评估报告（Markdown）。\n\n【评估框架】以 ISO/IEC 25010 软件产品质量模型为骨架，逐项给判断与证据，不要泛泛而谈：功能适合性（完整性/正确性/适宜性）、性能效率（时间行为/资源利用/容量）、兼容性（共存/互操作性）、可靠性（成熟度/可用性/容错/可恢复）、安全性（保密性/完整性/可追溯，按 OWASP 视角看）、可维护性（模块化/可分析性/可修改性/可测试性/可复用性，结合圈复杂度、重复率、命名、分层、依赖方向谈）、可移植性（适应性/可安装性/可替换性）。\n\n【架构视角】用 C4 的 Context/Container/Component 视角描述系统结构；能识别的技术债按 SQALE 思路分类。\n\n【结构与逻辑】先给一句话结论与总体评级，再展开。章节：1) 一句话结论与评级（1–10 分，附打分依据）；2) 项目概览；3) 技术栈与依赖；4) 架构与目录结构（引用真实目录/文件）；5) 按 ISO/IEC 25010 的质量评估——用表格：维度｜判断｜证据文件｜改进点；6) 代码质量与可维护性（具体到文件/函数）；7) 安全性考量；8) 文档完备度；9) 核心优势 / 主要风险（各 3–5 条，带证据）；10) 可落地改进建议（按投入/收益排序，标优先级）；11) 新手学习难度评级。每章末尾给一句风险或亮点小结。\n\n【写作风格——蒸馏过的老程序员，不要 AI 腔】直接给判断，不绕弯、不铺垫；禁用"值得注意的是/此外/综上所述/不仅…而且…"。每个论断落到具体文件名、目录或行级证据，没证据就说"未在已加载文件中找到证据"。句子长短交错，允许一句一段，允许带个人判断和轻微锋芒。不要三段式排比、不要破折号堆砌、不要满屏加粗、不要 emoji 装饰标题、不要"从 X 到 Y"的虚假范围、不要通用积极结尾。评级要有取舍，敢说差在哪。如真有信息量可用 ```mermaid 流程图，但图内节点与连线标签必须中文；若拿不准图能不能画清楚，就用表格或文字代替，禁止输出空图、乱码图、装饰图。\n\n【语言】所有正文、说明、图表节点标签、链接文字一律使用中文；代码、命令、API、文件名、URL 保留英文原样。';
-    const TUTORIAL_PROMPT = '你是带过无数新人的资深工程师兼老教师，要为零基础学习者把这个项目讲透。基于下方项目的技术栈与结构，撰写图文并茂、循序渐进的入门教学（中文 Markdown），教学设计要有理论支撑。\n\n【教学框架：5E 模型 + 布鲁姆认知分层】按 5E 组织主线，每阶段标注对应布鲁姆层级（记忆/理解/应用/分析/评价/创造，由低阶到高阶递进）：1) 引入 Engage（记忆/理解）：用真实场景或项目要解决的具体问题勾起好奇，连接已有经验；2) 探索 Explore（理解/应用）：带学习者看项目里最关键的 2–3 个文件/目录，边看边问；3) 解释 Explain（理解/分析）：讲清核心概念与技术，每个用"这是什么 / 为什么需要 / 在本项目里怎么用"三段式；4) 拓展 Elaborate（分析/评价/创造）：给一个可动手的小练习或改造思路，让概念迁移；5) 评价 Evaluate（评价/创造）：给自测清单，让学习者确认掌握。\n\n【认知负荷控制】遵循认知负荷理论，复杂处给"已完成范例（worked example）"并分段；按维果茨基最近发展区搭脚手架，从能懂的第一步起步逐步抬高。知识按事实性/概念性/程序性/元认知四类区分，别混着讲。\n\n【结构清晰】开篇给一张学习路径图（可用 ```mermaid 流程图）。每章用 ## 标题，关键概念加粗但克制，适当用列表。整体按布鲁姆由低到高递进，别一上来就讲架构创造。\n\n【权威学习资源】末尾给【权威学习资源】清单，分类列真实可访问资源：GitHub 仓库用真实知名仓库如 [freeCodeCamp](https://github.com/freeCodeCamp/freeCodeCamp)；官方网站给文档地址；B 站搜索用 [关键词](https://search.bilibili.com/all?keyword=关键词)。\n\n【写作风格——蒸馏过的老教师，不要 AI 腔】语气亲切有干货，像在白板前带人，不像念稿。禁用"值得注意的是/此外/综上所述/不仅…而且…"；不堆三段式，不滥用破折号、加粗、emoji。难处允许说"这块第一次看都会懵，没关系"，但紧接着给具体抓手。例子多用本项目真实文件/函数名，少用泛化比喻。结尾不要通用鸡汤，给一句实在的下一步。\n\n【语言与图表】所有正文、说明、图表节点标签、链接文字一律使用中文；代码、命令、API、文件名、URL 保留英文原样。学习路径图必须用 ```mermaid 流程图且节点与连线标签全部中文；若对图表语法不确定，改用有序列表或表格，禁止输出空图、装饰图、渲染不出来的图。';
+    const EVAL_PROMPT = '你是一位有 15 年实战经验的首席软件架构师，正在为团队做一次严肃的项目评审。请基于下方项目文件（目录结构 + 关键文件内容），用中文撰写一份专业、可落地的项目评估报告（Markdown）。\n\n【评估框架】以 ISO/IEC 25010 软件产品质量模型为骨架，逐项给判断与证据，不要泛泛而谈：功能适合性（完整性/正确性/适宜性）、性能效率（时间行为/资源利用/容量）、兼容性（共存/互操作性）、可靠性（成熟度/可用性/容错/可恢复）、安全性（保密性/完整性/可追溯，按 OWASP 视角看）、可维护性（模块化/可分析性/可修改性/可测试性/可复用性，结合圈复杂度、重复率、命名、分层、依赖方向谈）、可移植性（适应性/可安装性/可替换性）。\n\n【架构视角】用 C4 的 Context/Container/Component 视角描述系统结构；能识别的技术债按 SQALE 思路分类。\n\n【结构与逻辑】先给一句话结论与总体评级，再展开。章节：1) 一句话结论与评级（1–10 分，附打分依据）；2) 项目概览；3) 技术栈与依赖；4) 架构与目录结构（引用真实目录/文件）；5) 按 ISO/IEC 25010 的质量评估——用表格：维度｜判断｜证据文件｜改进点；6) 代码质量与可维护性（具体到文件/函数）；7) 安全性考量；8) 文档完备度；9) 核心优势 / 主要风险（各 3–5 条，带证据）；10) 可落地改进建议（按投入/收益排序，标优先级）；11) 新手学习难度评级。每章末尾给一句风险或亮点小结。\n\n【写作风格——蒸馏过的老程序员，不要 AI 腔】直接给判断，不绕弯、不铺垫；禁用"值得注意的是/此外/综上所述/不仅…而且…"。每个论断落到具体文件名、目录或行级证据，没证据就说"未在已加载文件中找到证据"。句子长短交错，允许一句一段，允许带个人判断和轻微锋芒。不要三段式排比、不要破折号堆砌、不要满屏加粗、不要 emoji 装饰标题、不要"从 X 到 Y"的虚假范围、不要通用积极结尾。评级要有取舍，敢说差在哪。如真有信息量可用 ```mermaid 流程图，但图内节点与连线标签必须中文；若拿不准图能不能画清楚，就用表格或文字代替，禁止输出空图、乱码图、装饰图。\n\n【语言】所有正文、说明、图表节点标签、链接文字一律使用中文；代码、命令、API、文件名、URL 保留英文原样。\n\n【引用溯源（必须）】报告中凡涉及具体文件、目录、函数或明确论断，请用方括号标注来源：格式 [相对路径:行号] 或 [相对路径]，例如 [src/app.js:42] 或 [README.md]；行号对应你看到的文件内容实际行（内容从文件首行开始）。关键结论尽量各附一个引用，便于读者一键溯源真实代码。';
+    const TUTORIAL_PROMPT = '你是带过无数新人的资深工程师兼老教师，要为零基础学习者把这个项目讲透。基于下方项目的技术栈与结构，撰写图文并茂、循序渐进的入门教学（中文 Markdown），教学设计要有理论支撑。\n\n【教学框架：5E 模型 + 布鲁姆认知分层】按 5E 组织主线，每阶段标注对应布鲁姆层级（记忆/理解/应用/分析/评价/创造，由低阶到高阶递进）：1) 引入 Engage（记忆/理解）：用真实场景或项目要解决的具体问题勾起好奇，连接已有经验；2) 探索 Explore（理解/应用）：带学习者看项目里最关键的 2–3 个文件/目录，边看边问；3) 解释 Explain（理解/分析）：讲清核心概念与技术，每个用"这是什么 / 为什么需要 / 在本项目里怎么用"三段式；4) 拓展 Elaborate（分析/评价/创造）：给一个可动手的小练习或改造思路，让概念迁移；5) 评价 Evaluate（评价/创造）：给自测清单，让学习者确认掌握。\n\n【认知负荷控制】遵循认知负荷理论，复杂处给"已完成范例（worked example）"并分段；按维果茨基最近发展区搭脚手架，从能懂的第一步起步逐步抬高。知识按事实性/概念性/程序性/元认知四类区分，别混着讲。\n\n【结构清晰】开篇给一张学习路径图（可用 ```mermaid 流程图）。每章用 ## 标题，关键概念加粗但克制，适当用列表。整体按布鲁姆由低到高递进，别一上来就讲架构创造。\n\n【权威学习资源】末尾给【权威学习资源】清单，分类列真实可访问资源：GitHub 仓库用真实知名仓库如 [freeCodeCamp](https://github.com/freeCodeCamp/freeCodeCamp)；官方网站给文档地址；B 站搜索用 [关键词](https://search.bilibili.com/all?keyword=关键词)。\n\n【写作风格——蒸馏过的老教师，不要 AI 腔】语气亲切有干货，像在白板前带人，不像念稿。禁用"值得注意的是/此外/综上所述/不仅…而且…"；不堆三段式，不滥用破折号、加粗、emoji。难处允许说"这块第一次看都会懵，没关系"，但紧接着给具体抓手。例子多用本项目真实文件/函数名，少用泛化比喻。结尾不要通用鸡汤，给一句实在的下一步。\n\n【语言与图表】所有正文、说明、图表节点标签、链接文字一律使用中文；代码、命令、API、文件名、URL 保留英文原样。学习路径图必须用 ```mermaid 流程图且节点与连线标签全部中文；若对图表语法不确定，改用有序列表或表格，禁止输出空图、装饰图、渲染不出来的图。\n\n【引用溯源】教学里讲到具体文件或函数时，用方括号标注来源 [相对路径] 或 [相对路径:行号]，例如 [src/app.js]；便于学习者定位真实代码。';
     const ASK_PROMPT = '你是基于项目知识库回答问题的助手。只能用下方【项目内容摘录】中的信息回答，用中文；摘录里没有就说"在项目内容中未找到相关信息"，不要编造、补全或泛化。回答简洁、直接，注明引用的文件路径。禁用"值得注意的是/此外/综上"这类连接词，不要三段式排比。\n\n【引用溯源（必须）】凡引用具体代码或明确结论，请用方括号标注来源：格式为 [相对路径:行号] 或 [相对路径:起始行-结束行]，例如 [src/app.js:42] 或 [utils/parse.py:10-15]；只引用【项目内容摘录】里真实存在的文件路径与行号（行号对应摘录中的实际行），关键结论尽量各附一个引用。若无法定位到具体行，至少标注 [文件路径]。\n\n【语言】所有回答必须使用中文；代码、命令、API、文件名、URL 保留英文原样。';
 
     // ---------- Markdown 渲染 ----------
@@ -765,7 +765,7 @@
       el.classList.add('fade-in');
       try { wrapSections(el); } catch(e){}
       renderMermaid(el);
-      if (el.id === 'reportBox' || el.id === 'tutorialBox') buildTOC(el.id);
+      if (el.id === 'reportBox' || el.id === 'tutorialBox') { buildTOC(el.id); linkifyCitationsIn(el.id); }
     }
 
     // 安全渲染 Mermaid：先用 mermaid.parse() 同步校验语法，再渲染；渲染后校验实际节点/边；任何失败/空/可疑 → 浅色代码块兜底
@@ -861,7 +861,9 @@
       };
       try {
         const ctx = buildContextBundle(currentProject, isEval ? CONTEXT_BUDGET_EVAL : CONTEXT_BUDGET_TUTORIAL, isEval ? MAX_PER_FILE_EVAL : MAX_PER_FILE_TUTORIAL);
-        const sysP = isEval ? EVAL_PROMPT : TUTORIAL_PROMPT;
+        let sysP = isEval ? EVAL_PROMPT : TUTORIAL_PROMPT;
+        const health = getHealthSummary();
+        if (isEval && health) sysP += '\n\n【架构健康度（由代码知识图谱自动分析，可直接引用为证据）】\n' + health;
         const userP = '以下是项目内容：\n\n' + ctx;
         promptEst = Math.ceil((sysP.length + userP.length) / 1.8);
         const { content, usage } = await callLLM({
@@ -1104,12 +1106,28 @@
       // 依赖清单（解析 manifests）
       const deps = parseDeps(p.files);
       const depsHtml = deps.length ? deps.map((d)=>'<span class="ov-chip">'+esc(d.name)+(d.ver?(' '+esc(d.ver)):'')+'</span>').join('') : '<span class="toc-empty">未识别到依赖清单（package.json / requirements.txt / go.mod / Cargo.toml 等）</span>';
+      // 架构健康度（基于已构建的 p.graph）
+      let healthInner = '<span class="text-sm text-stone-400">仓库关系分析将自动生成。</span>';
+      if (p.graph) {
+        const cyc = (p.graph.dirCycles||[]).concat(p.graph.fileCycles||[]);
+        let h = '';
+        if (p.graph.topKey && p.graph.topKey.length) {
+          h += '<div class="mb-2"><div class="text-xs text-stone-500 mb-1">📌 关键模块（被依赖最多 · 修改需谨慎）</div>' + p.graph.topKey.slice(0,5).map((k)=>'<span class="ov-chip">'+esc(k.file.split('/').pop())+' <span style="color:#a8a29e">·被'+k.fanIn+'依赖</span></span>').join('') + '</div>';
+        }
+        if (cyc.length) {
+          h += '<div class="mb-1"><div class="text-xs" style="color:#b91c1c">⚠ 循环依赖（'+cyc.length+' 处，建议解耦）</div>' + cyc.slice(0,4).map((c)=>'<div class="text-xs mt-1" style="color:#b91c1c">↻ '+esc(c.join(' → '))+'</div>').join('') + '</div>';
+        } else {
+          h += '<div class="text-xs mt-1" style="color:#7a6a3f">✓ 未检测到循环依赖，依赖方向健康。</div>';
+        }
+        healthInner = h;
+      }
       box.innerHTML =
         '<div class="ov-card"><div class="font-serif text-lg text-stone-800">📦 '+esc(p.name)+'</div>'+(p.description?'<div class="text-sm text-stone-600 mt-1">'+esc(p.description)+'</div>':'')+'<div class="text-xs text-stone-500 mt-1">主语言：'+esc(p.language||'未知')+' · 分支：'+esc(p.branch)+' · 文件总数：'+p.tree.length+' · 已抓取内容：'+p.files.length+'</div></div>'
         + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">语言占比</div>'+langBar+'<div class="mt-2">'+langLegend+'</div></div>'
         + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">顶层目录</div>'+topDirs+'</div>'
         + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">依赖清单</div>'+depsHtml+'</div>'
         + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">依赖关系图（GitNexus 风格·精简）</div><button onclick="buildDepGraph()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🔬 生成关系图</button></div><div id="depGraphBox" class="text-sm text-stone-400">点击上方按钮，从已加载文件的 import/require 语句扫描模块依赖并绘制。</div></div>'
+        + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">🔍 架构健康度（GitNexus 关系智能）</div>'+healthInner+'</div>'
         + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">代码知识图谱（GitNexus 精髓·预计算关系智能）</div><button onclick="renderCodeGraph()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🕸️ 生成图谱</button></div><div id="codeGraphBox" class="text-sm text-stone-400">本地扫描函数/类定义与调用、导入关系，构建可交互的模块关系图谱（无需大模型，毫秒级）。</div></div>'
         + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">架构图（DeepWiki 精髓·大模型生成）</div><button onclick="generateArchDiagram()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🧭 生成架构图</button></div><div id="archBox" class="text-sm text-stone-400">由大模型依据仓库结构梳理主要模块与分层依赖，绘制 Mermaid 架构图。</div></div>'
         + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">代码地图（DeepWiki 精髓·导览）</div><button onclick="generateCodeMap()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🗺️ 生成代码地图</button></div><div id="codeMapBox" class="text-sm text-stone-400">由大模型挑选最关键的文件并给出一句话职责说明，作为阅读路线导览。</div></div>';
@@ -1248,27 +1266,104 @@
           }
         }
       }
-      p.graph = { symbols: symbols.slice(0, 600), calls: calls.slice(0, 800), imports, nameToFile, builtAt: Date.now() };
+      // ---------- 架构健康度（GitNexus 精髓：分析关系，而非仅可视化） ----------
+      // 文件级中心度：fanIn = 被多少其他文件依赖；fanOut = 向外依赖多少文件
+      const fanIn = new Map(), fanOut = new Map(), symCount = new Map();
+      const addCnt = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+      for (const s of symbols) addCnt(symCount, s.file);
+      for (const c of calls) { addCnt(fanOut, c.from); addCnt(fanIn, c.to); }
+      for (const i of imports) { addCnt(fanOut, i.from); addCnt(fanIn, i.to); }
+      // 关键模块评分：被依赖越多次越关键（fanIn 权重最高），其次符号密度
+      const keyScore = new Map();
+      const allFiles = new Set([...fanIn.keys(), ...fanOut.keys(), ...symCount.keys()]);
+      for (const f of allFiles) keyScore.set(f, (fanIn.get(f) || 0) * 3 + (fanOut.get(f) || 0) + (symCount.get(f) || 0) * 0.2);
+      const topKey = [...keyScore.entries()].filter(([f]) => f.includes('/')).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([f, v]) => ({ file: f, score: Math.round(v), fanIn: fanIn.get(f) || 0 }));
+      const topCoupled = [...fanOut.entries()].filter(([f]) => f.includes('/')).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([f, v]) => ({ file: f, fanOut: v }));
+      // 循环依赖检测：目录级 import 图 + 文件级 call 图（DFS 环检测）
+      const dirCycles = findCycles(imports.map((i) => ({ from: i.from, to: i.to })));
+      const fileCycles = findCycles(calls.map((c) => ({ from: c.from, to: c.to })));
+      p.graph = { symbols: symbols.slice(0, 600), calls: calls.slice(0, 800), imports, nameToFile, fanIn, fanOut, topKey, topCoupled, dirCycles, fileCycles, builtAt: Date.now() };
     }
-    // Graph-RAG：用知识图谱按关系筛选相关文件与边，注入结构化上下文
-    function getGraphContext(query) {
+    // 有向图 DFS 环检测：返回若干环（路径数组）。节点过多时跳过，避免爆栈。
+    function findCycles(edges) {
+      try {
+        const g = new Map();
+        for (const e of edges) { if (!e.from || !e.to || e.from === e.to) continue; if (!g.has(e.from)) g.set(e.from, []); g.get(e.from).push(e.to); }
+        if (g.size > 400) return [];
+        const color = new Map(); const stack = []; const cycles = [];
+        const dfs = (u) => {
+          color.set(u, 1); stack.push(u);
+          for (const v of (g.get(u) || [])) {
+            if (cycles.length >= 6) return;
+            const c = color.get(v) || 0;
+            if (c === 1) { const i = stack.indexOf(v); if (i >= 0) cycles.push(stack.slice(i).concat(v)); }
+            else if (c === 0) dfs(v);
+          }
+          stack.pop(); color.set(u, 2);
+        };
+        for (const u of g.keys()) if (!color.get(u)) dfs(u);
+        return cycles;
+      } catch (e) { return []; }
+    }
+    // 架构健康度摘要文本（供报告显示 + 报告 prompt 注入）
+    function getHealthSummary() {
+      const g = currentProject && currentProject.graph; if (!g) return '';
+      const lines = [];
+      if (g.topKey && g.topKey.length) {
+        lines.push('关键模块（被依赖最多 / 最关键）：');
+        for (const k of g.topKey.slice(0, 5)) lines.push('- ' + k.file + '（被 ' + k.fanIn + ' 处依赖，关键度 ' + k.score + '）');
+      }
+      if (g.topCoupled && g.topCoupled.length) {
+        lines.push('耦合热点（向外依赖最多）：');
+        for (const c of g.topCoupled.slice(0, 3)) lines.push('- ' + c.file + '（向外依赖 ' + c.fanOut + ' 处）');
+      }
+      const cyc = (g.dirCycles || []).concat(g.fileCycles || []);
+      if (cyc.length) {
+        lines.push('⚠ 检测到 ' + cyc.length + ' 处循环依赖（架构坏味道，增加修改与测试风险）：');
+        cyc.slice(0, 5).forEach((c, idx) => lines.push('  环' + (idx + 1) + '：' + c.join(' → ')));
+      } else {
+        lines.push('✓ 未检测到循环依赖（依赖方向健康）。');
+      }
+      return lines.join('\n');
+    }
+    // Graph-RAG：用知识图谱多跳邻域（调用/依赖边扩展）+ 中心度排序，注入结构化上下文
+    function getGraphContext(query, hops) {
       const p = currentProject; if (!p || !p.graph) return '';
       const g = p.graph; const ql = query.toLowerCase();
-      const hits = new Set();
-      for (const s of g.symbols) { if (s.name.toLowerCase().includes(ql) || s.file.toLowerCase().includes(ql)) hits.add(s.file); }
-      const deg = new Map(); const bump = (f) => deg.set(f, (deg.get(f) || 0) + 1);
-      for (const c of g.calls) { bump(c.from); bump(c.to); }
-      for (const i of g.imports) { bump(i.from); bump(i.to); }
-      let related = [...hits];
-      if (related.length < 4) { related = related.concat([...deg.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map((x) => x[0])); }
-      related = [...new Set(related)].slice(0, 8);
-      if (!related.length) return '';
-      const lines = ['相关文件（由代码知识图谱按关系筛选）：'];
-      for (const f of related) lines.push('- ' + f);
+      // 1) 命中文件（符号名 / 路径匹配）
+      const seed = new Set();
+      for (const s of g.symbols) { if (s.name.toLowerCase().includes(ql) || s.file.toLowerCase().includes(ql)) seed.add(s.file); }
+      if (!seed.size) { for (const f of new Set([...g.fanIn.keys(), ...g.fanOut.keys()])) if (f.toLowerCase().includes(ql)) seed.add(f); }
+      // 2) 邻接表（双向），用于多跳扩展
+      const adj = new Map();
+      const link = (a, b) => { if (a && b && a !== b) { if (!adj.has(a)) adj.set(a, new Set()); adj.get(a).add(b); if (!adj.has(b)) adj.set(b, new Set()); adj.get(b).add(a); } };
+      for (const c of g.calls) link(c.from, c.to);
+      for (const i of g.imports) link(i.from, i.to);
+      // 3) 多跳邻域扩展（默认 2 跳）
+      let frontier = new Set(seed); const related = new Set(seed);
+      const H = hops || 2;
+      for (let h = 0; h < H; h++) {
+        const next = new Set();
+        for (const f of frontier) for (const nb of (adj.get(f) || [])) if (!related.has(nb)) { related.add(nb); next.add(nb); }
+        frontier = next; if (!frontier.size) break;
+      }
+      // 4) 不足则用中心度补足
+      if (related.size < 5) {
+        const deg = new Map();
+        const bump = (f) => deg.set(f, (deg.get(f) || 0) + 1);
+        for (const c of g.calls) { bump(c.from); bump(c.to); }
+        for (const i of g.imports) { bump(i.from); bump(i.to); }
+        for (const [f, d] of [...deg.entries()].sort((a, b) => b[1] - a[1])) { if (related.size >= 9) break; related.add(f); }
+      }
+      const rel = [...related].slice(0, 10);
+      if (!rel.length) return '';
+      const relSet = new Set(rel);
+      const lines = ['相关文件（由代码知识图谱按关系多跳筛选）：'];
+      for (const f of rel) lines.push('- ' + f);
       lines.push(''); lines.push('关系（IMPORTS / CALLS）：');
       let cnt = 0;
-      for (const c of g.calls) { if (related.includes(c.from) && related.includes(c.to)) { lines.push('- ' + c.from + ' 调用 ' + c.to + ' 的 ' + c.sym + '()'); if (++cnt > 40) break; } }
-      for (const i of g.imports) { if (related.includes(i.from) && related.includes(i.to)) { lines.push('- ' + i.from + ' 导入 ' + i.to); if (++cnt > 60) break; } }
+      for (const c of g.calls) { if (relSet.has(c.from) && relSet.has(c.to)) { lines.push('- ' + c.from + ' 调用 ' + c.to + ' 的 ' + c.sym + '()'); if (++cnt > 40) break; } }
+      for (const i of g.imports) { if (relSet.has(i.from) && relSet.has(i.to)) { lines.push('- ' + i.from + ' 导入 ' + i.to); if (++cnt > 60) break; } }
       return lines.join('\n');
     }
     function renderCodeGraph() {
@@ -1326,6 +1421,47 @@
     }
     function closeSnippet() { $('snippetModal').classList.add('hidden'); }
     function showSnippetAt(i) { const c = currentCites[i]; if (c) showSnippet(c.path, c.start, c.end); }
+    // 报告/教学引用溯源：全文扫描 [path:line] 渲染为可点击 chip（DeepWiki 精髓·每句可溯源）
+    const reportCites = [], tutorialCites = [];
+    function linkifyCitationsIn(boxId) {
+      const el = $(boxId); if (!el) return;
+      const store = boxId === 'reportBox' ? reportCites : tutorialCites;
+      store.length = 0;
+      const re = /\[((?:[^\]\s]+\/)*[^\]\s]+?):(\d+)(?:-(\d+))?\]/g;
+      const hasRe = /\[[^\]\s]+?:\d/;
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          let p = node.parentNode; while (p && p !== el) { if (p.tagName === 'PRE' || p.tagName === 'CODE') return NodeFilter.FILTER_REJECT; p = p.parentNode; }
+          return (node.nodeValue && hasRe.test(node.nodeValue)) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+        }
+      });
+      const nodes = []; let nd; while ((nd = walker.nextNode())) nodes.push(nd);
+      for (const node of nodes) {
+        const text = node.nodeValue; re.lastIndex = 0;
+        const frag = document.createDocumentFragment(); let last = 0; let m;
+        while ((m = re.exec(text)) !== null) {
+          if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+          const path = m[1], start = +m[2], end = m[3] ? +m[3] : +m[2];
+          const idx = store.length; store.push({ path, start, end });
+          const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'cite-chip';
+          btn.textContent = path.split('/').pop() + ':' + start + (end !== start ? ('-' + end) : '');
+          btn.addEventListener('click', () => showDocSnippet(idx, boxId));
+          frag.appendChild(btn);
+          last = m.index + m[0].length;
+        }
+        if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+        node.parentNode.replaceChild(frag, node);
+      }
+      if (store.length) {
+        const cr = document.createElement('div'); cr.className = 'cite-row mt-3';
+        cr.innerHTML = '<span class="cite-label">🔗 本文引用溯源（' + store.length + ' 处，点击查看真实代码）：</span>' + store.map((c, i) => { const label = c.path.split('/').pop() + ':' + c.start + (c.end !== c.start ? ('-' + c.end) : ''); return '<button type="button" class="cite-chip" onclick="showDocSnippet(' + i + ',\'' + boxId + '\')">' + esc(label) + '</button>'; }).join('');
+        el.appendChild(cr);
+      }
+    }
+    function showDocSnippet(i, boxId) {
+      const store = boxId === 'reportBox' ? reportCites : tutorialCites;
+      const c = store[i]; if (c) showSnippet(c.path, c.start, c.end);
+    }
     // ---- LLM 架构图 / 代码地图（DeepWiki 精髓） ----
     function extractMermaid(text) {
       if (!text) return null;
