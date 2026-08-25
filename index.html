@@ -297,6 +297,7 @@
             <div class="space-y-2 md:col-span-2">
               <label class="block font-sans text-sm text-stone-700">基地址（Base URL）</label>
               <input id="baseURL" type="text" class="w-full px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
+              <p class="font-sans text-xs text-stone-500">⚠️ 需填「/chat/completions 所在目录」，即结尾通常要带 <code class="bg-stone-100 px-1 rounded">/v1</code>（例如 Ollama 应为 <code class="bg-stone-100 px-1 rounded">http://localhost:11434/v1</code>，只填 <code class="bg-stone-100 px-1 rounded">http://localhost:11434</code> 会 404）。</p>
             </div>
           </div>
           <p class="font-sans text-xs text-stone-500 mt-4">💡 浏览器会自动使用你的系统代理，无需单独配置。例如百炼：基地址 <code class="bg-stone-100 px-1 rounded">https://dashscope.aliyuncs.com/compatible-mode/v1</code>，模型 <code class="bg-stone-100 px-1 rounded">qwen-plus</code>。模型栏为候选建议，可下拉选择也可直接手填任意模型名。</p>
@@ -738,13 +739,22 @@
       if (!apiKey) throw new Error('缺少 API Key');
       if (!baseURL) throw new Error('缺少基地址');
       const url = baseURL.replace(/\/+$/,'') + '/chat/completions';
-      const body = { model: model||'gpt-4o-mini', messages, temperature };
-      if (max_tokens) body.max_tokens = max_tokens;
-      if (stream) { body.stream = true; body.stream_options = { include_usage: true }; }
+      const buildBody = (withStreamOpts) => {
+        const b = { model: model||'gpt-4o-mini', messages, temperature };
+        if (max_tokens) b.max_tokens = max_tokens;
+        if (stream) { b.stream = true; if (withStreamOpts) b.stream_options = { include_usage: true }; }
+        return b;
+      };
+      const headers = { 'Content-Type':'application/json', 'Authorization':'Bearer '+apiKey };
       const ac = new AbortController();
       const t = setTimeout(()=>ac.abort(), timeout);
       try {
-        const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey}, body: JSON.stringify(body), signal: ac.signal });
+        let res = await fetch(url, { method:'POST', headers, body: JSON.stringify(buildBody(true)), signal: ac.signal });
+        // 部分自建 OpenAI 兼容网关不认 stream_options，400 时自动重试一次不带该字段
+        if (!res.ok && stream && res.status === 400) {
+          try { if (res.body && res.body.cancel) res.body.cancel(); } catch(e){}
+          res = await fetch(url, { method:'POST', headers, body: JSON.stringify(buildBody(false)), signal: ac.signal });
+        }
         if (!res.ok) {
           let msg = res.status+' '+res.statusText;
           try { const j = await res.json(); if (j && j.error && j.error.message) msg += ' — ' + j.error.message; } catch(e){}
@@ -996,6 +1006,15 @@
       if (ext === '') return NO_EXT_TEXT.has(base);
       return false;
     }
+    // 密钥 / 凭证类文件：绝不可被抓取内容、更不可发给第三方 LLM API
+    function isSecretFile(p) {
+      const b = p.split('/').pop().toLowerCase();
+      if (/^\.env($|\.)/.test(b)) return true;            // .env / .env.local / .env.production ...
+      if (/\.(pem|key|p12|pfx|pkcs12)$/.test(b)) return true;
+      if (/^id_(rsa|ed25519|ecdsa|dsa)/.test(b)) return true;
+      if (/(^|[\.\-_])credentials($|[\.\-_])/i.test(b) || /secret/i.test(b)) return true;
+      return false;
+    }
     function parseRepoUrl(url) {
       if (!url) throw new Error('仓库地址为空');
       let u = url.trim().replace(/\.git$/,'').replace(/\/+$/,'');
@@ -1046,14 +1065,15 @@
       let owner, repo;
       try { ({owner,repo} = parseRepoUrl(repoUrl)); } catch(e) { setStatus($('repoStatus'),e.message,true); return; }
       // 本机缓存秒开：若 7 天内有缓存，询问是否免拉取直接恢复（二次问答不走全量重跑）
-      const cached = loadProjectCache(owner, repo);
+      const cached = await loadProjectCache(owner, repo);
       if (cached && (Date.now() - cached.cachedAt) < 7 * 864e5) {
         if (confirm('检测到本机缓存（' + new Date(cached.cachedAt).toLocaleString() + '）。\n点「确定」从缓存秒开（免重新拉取，问答直接可用）；点「取消」重新从 GitHub 拉取最新。')) {
           btn.disabled = false; btn.classList.remove('opacity-60');
-          const proj = { name: cached.name, owner: cached.owner, repo: cached.repo, branch: cached.branch, tree: cached.tree, files: cached.files.map((f)=>({ path:f.path, content:f.content, size:f.size })), description: cached.description, language: cached.language, method: cached.method || 'api', graph: cached.graph, facts: cached.facts, url: cached.url };
+          const proj = { name: cached.name, owner: cached.owner, repo: cached.repo, branch: cached.branch, tree: cached.tree, files: cached.files.map((f)=>({ path:f.path, content:f.content, size:f.size })), description:  cached.description, language: cached.language, method: cached.method || 'api', graph: cached.graph, facts: cached.facts, url: cached.url, embedded: cached.embedded || false, index: cached.index || null };
           try { buildCodeGraph(); } catch(e){}
           try { scanRepoFacts(); } catch(e){}
           ingestFinalize(proj, '已从本机缓存秒开');
+          if (cached.embedded && cached.index) { const s = $('repoStatus'); if (s) s.textContent = '✅ 已从本机缓存秒开（含向量索引）：' + proj.name + ' · ' + proj.files.length + ' 文件'; }
           return;
         }
       }
@@ -1092,7 +1112,7 @@
             return 9;
           };
           const candidates = blobs
-            .filter((b)=> isTextFile(b.path) && (b.size||0) <= MAX_FILE_SIZE)
+            .filter((b)=> isTextFile(b.path) && !isSecretFile(b.path) && (b.size||0) <= MAX_FILE_SIZE)
             .sort((a,b)=> priority(a.path)-priority(b.path) || (b.size||0)-(a.size||0))
             .slice(0, MAX_CONTENT_FILES);
           // 并发抓取内容（8 并发）
@@ -1139,21 +1159,44 @@
       } finally { btn.disabled = false; btn.classList.remove('opacity-60'); }
     }
 
-    // ---------- 本机缓存（localStorage）：已分析项目的结构化摘要，二次问答免全量重跑 ----------
+    // ---------- 本机缓存（IndexedDB 优先，localStorage 回退）：已分析项目的结构化摘要，二次问答免全量重跑 ----------
     function cacheKeyFor(owner, repo) { return 'lyp_cache_v1::' + owner + '/' + repo; }
-    function saveProjectCache(project) {
-      try {
-        const data = {
-          name: project.name, owner: project.owner, repo: project.repo, branch: project.branch,
-          tree: project.tree, files: project.files.map((f)=>({ path:f.path, content:f.content, size:f.size })),
-          description: project.description, language: project.language, method: project.method, url: project.url,
-          graph: project.graph, facts: project.facts, cachedAt: Date.now()
-        };
-        localStorage.setItem(cacheKeyFor(project.owner, project.repo), JSON.stringify(data));
-      } catch(e){ /* 超出配额则跳过缓存（大仓库） */ }
+    const CACHE_DB = 'lyp_cache_db', CACHE_STORE = 'projects';
+    function _idb() { return new Promise((res, rej) => { const r = indexedDB.open(CACHE_DB, 1); r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains(CACHE_STORE)) r.result.createObjectStore(CACHE_STORE); }; r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+    async function _idbPut(key, val) {
+      const db = await _idb();
+      try { await new Promise((res, rej) => { const tx = db.transaction(CACHE_STORE, 'readwrite'); tx.objectStore(CACHE_STORE).put(val, key); tx.oncomplete = () => res(true); tx.onerror = () => rej(tx.error); }); }
+      finally { try { db.close(); } catch(e){} }
     }
-    function loadProjectCache(owner, repo) {
-      try { const s = localStorage.getItem(cacheKeyFor(owner, repo)); if (!s) return null; const d = JSON.parse(s); if (!d || !d.files) return null; return d; } catch(e){ return null; }
+    async function _idbGet(key) {
+      const db = await _idb();
+      try { return await new Promise((res) => { const tx = db.transaction(CACHE_STORE, 'readonly'); const rq = tx.objectStore(CACHE_STORE).get(key); rq.onsuccess = () => res(rq.result || null); rq.onerror = () => res(null); }); }
+      finally { try { db.close(); } catch(e){} }
+    }
+    async function saveProjectCache(project) {
+      // 同时保存向量索引与 embedded 标记，使「缓存秒开」后仍能保留深度检索能力
+      const data = {
+        name: project.name, owner: project.owner, repo: project.repo, branch: project.branch,
+        tree: project.tree, files: project.files.map((f)=>({ path:f.path, content:f.content, size:f.size })),
+        description: project.description, language: project.language, method: project.method, url: project.url,
+        graph: project.graph, facts: project.facts, embedded: project.embedded || false, index: project.index || null, cachedAt: Date.now()
+      };
+      try {
+        await _idbPut(cacheKeyFor(project.owner, project.repo), data);
+      } catch(e) {
+        // 回退到 localStorage（容量小），再失败则提示而非静默
+        try { localStorage.setItem(cacheKeyFor(project.owner, project.repo), JSON.stringify(data)); }
+        catch(e2) {
+          console.warn('缓存写入失败（存储配额不足）：', e2);
+          const s = $('repoStatus');
+          if (s) s.textContent = '⚠️ 本机缓存写入失败（存储配额不足），本次不启用「缓存秒开」；可清理浏览器站点存储后重试。';
+        }
+      }
+    }
+    async function loadProjectCache(owner, repo) {
+      try { const d = await _idbGet(cacheKeyFor(owner, repo)); if (d && d.files) return d; } catch(e){}
+      try { const s = localStorage.getItem(cacheKeyFor(owner, repo)); if (s) { const d = JSON.parse(s); if (d && d.files) return d; } } catch(e){}
+      return null;
     }
     // 通用的「载入后处理」：构建索引 + 显示工作区 + 构建图谱/概览/建议。本地文件夹与缓存恢复共用
     function ingestFinalize(project, statusMsg) {
@@ -1186,8 +1229,9 @@
             const path = prefix ? prefix + '/' + name : name;
             if (entry.kind === 'directory') { if (SKIP.has(name)) continue; await walk(entry, path); }
             else {
+              if (isSecretFile(path)) continue;   // 密钥文件不抓取、不外发
               tree.push(path);
-              if (files.length >= MAX_CONTENT_FILES) continue;
+              if (files.length >= MAX_CONTENT_FILES)  continue;
               if (!isTextFile(path)) continue;
               try { const file = await entry.getFile(); if (file.size > MAX_FILE_SIZE) continue; const text = await file.text(); files.push({ path, content: text, size: file.size }); } catch(e){}
             }
@@ -1598,12 +1642,17 @@
       const box = $('auditBody'); box.innerHTML = '<div class="flex items-center gap-3 text-stone-600"><span class="spinner spinner-dark"></span>正在读取最近提交与变更文件…</div>';
       try {
         const token = cfg.ghToken;
-        const commitsRes = await ghJSON(GH + '/repos/' + p.owner + '/' + p.repo + '/commits?per_page=20' + (p.branch ? ('&sha=' + encodeURIComponent(p.branch)) : ''), token);
+        const ANALYZE_N = 15;
+        const commitsRes = await ghJSON(GH + '/repos/' + p.owner + '/' + p.repo + '/commits?per_page=' + ANALYZE_N + (p.branch ? ('&sha=' + encodeURIComponent(p.branch)) : ''), token);
         const commits = Array.isArray(commitsRes) ? commitsRes : [];
+        // 列表接口不含 files 字段，逐个拉取最近 N 条 commit 详情以拿到真实改动文件（并发）
+        const detailList = await Promise.all(commits.slice(0, ANALYZE_N).map((c) => ghJSON(GH + '/repos/' + p.owner + '/' + p.repo + '/commits/' + c.sha, token).catch(() => null)));
+        const detailed = commits.slice(0, ANALYZE_N).map((c, i) => detailList[i] || c);
+        const analyzed = detailed.filter(Boolean);
         const fileStats = new Map();
         let aiCommits = 0, totalAdd = 0, totalDel = 0;
         const recent = [];
-        for (const c of commits.slice(0, 15)) {
+        for (const c of analyzed) {
           const files = c.files || [];
           const msg = (c.commit && c.commit.message) || '';
           const authorName = (c.author && c.author.login) || (c.commit && c.commit.author && c.commit.author.name) || '';
@@ -1617,12 +1666,12 @@
             fileStats.set(f.filename, s); totalAdd += (f.additions || 0); totalDel += (f.deletions || 0);
           }
         }
-        if (!commits.length) { box.innerHTML = '<p class="font-sans text-stone-600">未读取到提交历史（可能是空仓库或权限不足）。</p>'; return; }
+        if (!analyzed.length) { box.innerHTML = '<p class="font-sans text-stone-600">未读取到提交历史（可能是空仓库或权限不足）。</p>'; return; }
         const top = [...fileStats.values()].sort((a, b) => (b.add + b.del) - (a.add + a.del)).slice(0, 30);
         const summary = [
           '# 变更审计摘要',
           '仓库：' + p.name,
-          '分析提交数：' + commits.length + '（最近 15 次）',
+          '分析提交数：' + analyzed.length + '（最近 ' + ANALYZE_N + ' 次）',
           '疑似 AI 辅助提交：' + aiCommits + ' 次',
           '累计新增：' + totalAdd + ' 行，删除：' + totalDel + ' 行',
           '',
@@ -1637,7 +1686,8 @@
         box.innerHTML = renderMD(content);
         try { linkifyCitationsIn('auditBody'); } catch (e) {}
         const stat = document.createElement('div'); stat.className = 'cite-row'; stat.style.marginTop = '0.8rem';
-        stat.innerHTML = '<span class="cite-label">📊 改动文件：</span>' + top.slice(0, 14).map((s) => { const a = s.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'"); return '<button class="cite-chip" onclick="openFileSnippet(\'' + a + '\')">' + esc(s.path.split('/').pop()) + ' +' + s.add + '/-' + s.del + '</button>'; }).join('');
+        stat.innerHTML = '<span class="cite-label">📊 改动文件：</span>' + top.slice(0, 14).map((s) => '<button class="cite-chip" data-ap="' + encodeURIComponent(s.path) + '" onclick="openFileSnippetData(this)">' + esc(s.path.split('/').pop()) + ' +' + s.add + '/-' + s.del + '</button>').join('');
+        window.openFileSnippetData = function (el) { openFileSnippet(decodeURIComponent(el.getAttribute('data-ap'))); };
         box.appendChild(stat);
       } catch (e) {
         box.innerHTML = '<p class="text-red-700 font-sans">❌ ' + e.message + '</p>';
@@ -1897,40 +1947,73 @@
         const tree = p.tree || [];
         const allPaths = new Set(tree);
         const entrySet = (p.facts && p.facts.entrypoints) ? new Set(p.facts.entrypoints) : new Set();
-        const re = /(?:^|[^.\w])(?:import\s+(?:[\s\S]*?from\s+)?|require\s*\(\s*|from\s+)(["'])([^"'\n]+)\1/g;
         const referenced = new Set();
         const edges = [];
+        // 按语言分支抽取 import / use / include 导入目标（解决 Python/Go/Rust 大量误报）
+        function extractImportSpecs(path, content) {
+          const ext = fileExt(path); const out = [];
+          if (ext === 'py') {
+            const re = /^\s*(?:from\s+([.\w]+)\s+import|import\s+([.\w]+))/gm;
+            let m; while ((m = re.exec(content)) !== null) { out.push(m[1] || m[2]); }
+          } else if (ext === 'go') {
+            const re = /import\s*(?:\(([^)]*)\)|(["'])([^"']+)\2)/g;
+            let m; while ((m = re.exec(content)) !== null) {
+              if (m[1]) { const inner = m[1].match(/["']([^"']+)["']/g) || []; for (const s of inner) out.push(s.replace(/["']/g, '')); }
+              else if (m[3]) out.push(m[3]);
+            }
+          } else if (ext === 'rs') {
+            const re = /(?:use|pub\s+use)\s+([^\s;]+)/g;
+            let m; while ((m = re.exec(content)) !== null) { out.push(m[1].split('::')[0]); }
+          } else {
+            const re = /(?:import\s+(?:[\s\S]*?from\s+)?|require\s*\(\s*|from\s+)(["'])([^"'\n]+)\1/g;
+            let m; while ((m = re.exec(content)) !== null) out.push(m[2]);
+          }
+          return out;
+        }
         function resolve(importer, spec) {
-          if (!/^\.\.?\//.test(spec)) return null;
-          const base = importer.includes('/') ? importer.slice(0, importer.lastIndexOf('/')) : '';
-          const parts = (base ? base.split('/') : []).concat(spec.split('/'));
-          const stack = [];
-          for (const ps of parts) { if (ps === '.' || ps === '') continue; if (ps === '..') stack.pop(); else stack.push(ps); }
-          const cand = stack.join('/');
-          const cands = [cand, cand + '.js', cand + '.ts', cand + '.jsx', cand + '.tsx', cand + '.mjs', cand + '.cjs', cand + '.py', cand + '.go', cand + '/index.js', cand + '/index.ts', cand + '/index.tsx', cand + '/index.jsx', cand + '.vue', cand + '.svelte'];
-          for (const c of cands) if (allPaths.has(c)) return c;
+          // 相对路径直接解析
+          if (/^\.\.?\//.test(spec)) {
+            const base = importer.includes('/') ? importer.slice(0, importer.lastIndexOf('/')) : '';
+            const parts = (base ? base.split('/') : []).concat(spec.split('/'));
+            const stack = [];
+            for (const ps of parts) { if (ps === '.' || ps === '') continue; if (ps === '..') stack.pop(); else stack.push(ps); }
+            const cand = stack.join('/');
+            const cands = [cand, cand + '.js', cand + '.ts', cand + '.jsx', cand + '.tsx', cand + '.mjs', cand + '.cjs', cand + '.py', cand + '.go', cand + '.rs', cand + '/index.js', cand + '/index.ts', cand + '/index.tsx', cand + '/index.jsx', cand + '.vue', cand + '.svelte'];
+            for (const c of cands) if (allPaths.has(c)) return c;
+            return null;
+          }
+          // Python / Rust 的「点分模块名」尝试按路径解析（仅当目标可能落在项目内）
+          const ext = fileExt(importer);
+          if (ext === 'py' || ext === 'rs') {
+            const seg = spec.replace(/^(?:from\s+)?(?:\.\/+|::)/, '').split(/[.\/]/).filter(Boolean);
+            const base = importer.includes('/') ? importer.slice(0, importer.lastIndexOf('/')) : '';
+            const cand = (base ? base.split('/') : []).concat(seg).join('/');
+            const cands = [cand, cand + (ext === 'py' ? '.py' : '.rs')];
+            for (const c of cands) if (allPaths.has(c)) return c;
+          }
           return null;
         }
+        // 只对「相对引用可确认」的语言（JS/TS 系）才把「无引用」判定为孤儿；其余降级措辞
+        const RESOLVABLE = new Set(['js','jsx','ts','tsx','mjs','cjs','vue','svelte']);
         const SCAN_CAP = 700; let scanned = 0;
         for (const f of files) {
           if (scanned++ > SCAN_CAP) break;
           if (!isCode(f)) continue;
-          let m; re.lastIndex = 0;
-          while ((m = re.exec(f.content || '')) !== null) {
-            const tgt = m[2];
-            if (!/^\.\.?\//.test(tgt)) continue;
-            const r = resolve(f.path, tgt);
+          for (const spec of extractImportSpecs(f.path, f.content || '')) {
+            const r = resolve(f.path, spec);
             if (r) { referenced.add(r); if (isCode({ path: r })) edges.push([f.path, r]); }
           }
         }
         const SKIP = /^(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|tsconfig.*|webpack.*|vite.*|rollup.*|babel.*|eslint.*|prettier.*|cargo\.toml|cargo\.lock|go\.mod|go\.sum|requirements\.txt|pyproject\.toml|poetry\.lock|gemfile|gemfile\.lock|composer\.json|composer\.lock|deno\.json|deno\.lock|\.env.*|makefile|cmakelists\.txt|\.gitignore|\.npmrc|\.npmignore)$/i;
-        const orphans = [];
+        const orphans = [], uncertainRef = [];
         for (const f of files) {
           if (!isCode(f)) continue;
           if (referenced.has(f.path) || entrySet.has(f.path)) continue;
           const base = f.path.split('/').pop();
           if (SKIP.test(base)) continue;
-          orphans.push(f.path);
+          const ext = fileExt(f.path);
+          if (RESOLVABLE.has(ext)) orphans.push(f.path);            // 相对引用可确认：归为孤儿
+          else uncertainRef.push(f.path);                            // Python/Go/Rust 等无法确认：降级措辞
         }
         const giants = files.filter((f) => isCode(f)).map((f) => ({ path: f.path, lines: (f.content || '').split('\n').length })).filter((x) => x.lines >= 350).sort((a, b) => b.lines - a.lines).slice(0, 6);
         const hasTests = tree.some((t) => /(^|[\/\\])(test|tests|spec|__tests__)[\/\\]/i.test(t) || /\.(test|spec)\.(js|ts|jsx|tsx)$/i.test(t) || /_test\.go$/.test(t) || /^test_.*\.py$/.test(t.split('/').pop()));
@@ -1943,6 +2026,10 @@
         if (orphans.length) {
           red.push({ t: '孤儿文件（' + orphans.length + ' 个，疑似 AI 生成后废弃或你从未理清）', d: orphans.slice(0, 6).map((o) => '· ' + esc(o)).join('<br/>') + (orphans.length > 6 ? '<br/>· …' : ''), prompt: orphans.slice(0, 8).map((o) => '文件 `' + o + '` 没有任何模块引用它，疑似之前生成后没用上或我（人类）没理清。请先告诉我它是否还有用：没用就安全删除；有用就把它正确接入相关模块。不要擅自改动其他文件。').join('\n\n') });
           P.push('## 🔴 孤儿文件（请先理清）'); for (const o of orphans.slice(0, 8)) P.push('- `' + o + '`：无模块引用，疑似废弃或遗漏接入。先确认删除或接入，再继续。');
+        }
+        if (uncertainRef.length) {
+          yellow.push({ t: '未识别到引用（' + uncertainRef.length + ' 个，可能受扫描能力限制）', d: '这些文件（多为 Python / Go / Rust 等）未检测到被其他模块直接引入 —— 这**可能只是扫描能力限制，不代表文件一定无用**，请勿误删。' + uncertainRef.slice(0, 6).map((o) => '<br/>· ' + esc(o)).join('') + (uncertainRef.length > 6 ? '<br/>· …' : ''), prompt: '以下文件未被扫描确认为「被引用」，但也可能是扫描能力限制而非真的无用（Python/Go/Rust 的模块解析尚未完全覆盖）。请先向我确认哪些文件确实无用，再决定删除；我不会擅自删除任何文件。' + uncertainRef.slice(0, 8).map((o) => '\n- `' + o + '`：未确认是否被引用，请人工核实。').join('') });
+          P.push('## 🟡 未识别到引用（可能受扫描能力限制）'); for (const o of uncertainRef.slice(0, 8)) P.push('- `' + o + '`：未确认是否被引用，可能是扫描限制，请人工核实后再删除。');
         }
         if (giants.length) {
           red.push({ t: '巨型文件（' + giants.length + ' 个，疑似 AI 一次性生成，改动牵一发动全身）', d: giants.map((g) => '· ' + esc(g.path) + '（' + g.lines + ' 行）').join('<br/>'), prompt: giants.map((g) => '文件 `' + g.path + '` 有 ' + g.lines + ' 行，疑似一次性生成。建议先拆成若干小模块、为每个函数写清职责，再让我继续改；改动前先向我解释你要动哪里、为什么。').join('\n\n') });
