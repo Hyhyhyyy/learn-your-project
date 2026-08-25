@@ -1,0 +1,22 @@
+name: Validate static site
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# 纯静态单文件站点：无构建、无依赖安装，仅做语法/结构校验。
+# 校验逻辑见 scripts/validate.js（内联 JS 语法 + 基础 HTML 结构 + 残留占位符）。
+# 如需更严格的 HTML 规范检查，可在此追加 html-validate；
+# 但本项目为手写内联单文件（大量内联样式），html-validate:recommended 噪音较大，故默认未启用。
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Validate inline JS + HTML structure
+        run: node scripts/validate.js
