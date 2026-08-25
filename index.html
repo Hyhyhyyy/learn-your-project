@@ -2129,12 +2129,15 @@
           }
         }
         const SKIP = /^(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|tsconfig.*|webpack.*|vite.*|rollup.*|babel.*|eslint.*|prettier.*|cargo\.toml|cargo\.lock|go\.mod|go\.sum|requirements\.txt|pyproject\.toml|poetry\.lock|gemfile|gemfile\.lock|composer\.json|composer\.lock|deno\.json|deno\.lock|\.env.*|makefile|cmakelists\.txt|\.gitignore|\.npmrc|\.npmignore)$/i;
+        // 测试 / 夹具文件：由测试运行器加载，天然不被源码 import，属正常结构——不归类为「孤儿文件」，绝不生成「安全删除」指令
+        const isTest = (fp) => /(^|[\/\\])(test|tests|spec|__tests__|fixtures?)[\/\\]/i.test(fp) || /\.(test|spec)\.(js|ts|jsx|tsx|mjs|cjs)$/i.test(fp) || /_test\.(go|rs|py)$/.test(fp) || /^test_.*\.(py|rb)$/.test(fp.split('/').pop());
         const orphans = [], uncertainRef = [];
         for (const f of files) {
           if (!isCode(f)) continue;
           if (referenced.has(f.path) || entrySet.has(f.path)) continue;
           const base = f.path.split('/').pop();
           if (SKIP.test(base)) continue;
+          if (isTest(f.path)) continue;
           const ext = fileExt(f.path);
           if (RESOLVABLE.has(ext)) orphans.push(f.path);            // 相对引用可确认：归为孤儿
           else uncertainRef.push(f.path);                            // Python/Go/Rust 等无法确认：降级措辞
@@ -2155,6 +2158,9 @@
           yellow.push({ t: '未识别到引用（' + uncertainRef.length + ' 个，可能受扫描能力限制）', d: '这些文件（多为 Python / Go / Rust 等）未检测到被其他模块直接引入 —— 这**可能只是扫描能力限制，不代表文件一定无用**，请勿误删。' + uncertainRef.slice(0, 6).map((o) => '<br/>· ' + esc(o)).join('') + (uncertainRef.length > 6 ? '<br/>· …' : ''), prompt: '以下文件未被扫描确认为「被引用」，但也可能是扫描能力限制而非真的无用（Python/Go/Rust 的模块解析尚未完全覆盖）。请先向我确认哪些文件确实无用，再决定删除；我不会擅自删除任何文件。' + uncertainRef.slice(0, 8).map((o) => '\n- `' + o + '`：未确认是否被引用，请人工核实。').join('') });
           P.push('## 🟡 未识别到引用（可能受扫描能力限制）'); for (const o of uncertainRef.slice(0, 8)) P.push('- `' + o + '`：未确认是否被引用，可能是扫描限制，请人工核实后再删除。');
         }
+        // 独立测试文件：由测试运行器加载，天然不被源码 import，属正常结构，已排除在「孤儿文件」之外
+        const testFiles = files.filter((f) => isCode(f) && isTest(f.path));
+        if (testFiles.length) green.push('检测到 ' + testFiles.length + ' 个测试文件（由测试运行器加载，天然不被源码 import，属正常结构——已排除在「孤儿文件」之外，请勿当孤儿删除）。');
         if (giants.length) {
           red.push({ t: '巨型文件（' + giants.length + ' 个，疑似 AI 一次性生成，改动牵一发动全身）', d: giants.map((g) => '· ' + esc(g.path) + '（' + g.lines + ' 行）').join('<br/>'), prompt: giants.map((g) => '文件 `' + g.path + '` 有 ' + g.lines + ' 行，疑似一次性生成。建议先拆成若干小模块、为每个函数写清职责，再让我继续改；改动前先向我解释你要动哪里、为什么。').join('\n\n') });
           P.push('## 🔴 巨型文件（建议先拆分）'); for (const g of giants) P.push('- `' + g.path + '`：' + g.lines + ' 行，疑似一次性生成，先拆分再改。');
@@ -2504,7 +2510,7 @@
       if (docs.length) {
         const docPaths = docs.map((d) => d.path);
         for (const f of codeFiles.slice(0, 60)) {
-          for (const d of docPaths) add(d, f, 'SOFT_DOC_LINK', '文档相关');
+          for (const d of docPaths) add(d, f.path, 'SOFT_DOC_LINK', '文档相关');
         }
       }
       // 4) 文件名语义相似（共同前缀/词干）
@@ -2629,7 +2635,7 @@
     function renderCodeGraph() {
       const p = currentProject; if (!p) return;
       const box = $('codeGraphBox'); if (!box) return;
-      if (!p.graph) buildCodeGraph();
+      try { if (!p.graph) buildCodeGraph(); } catch (e) { box.innerHTML = '<p class="text-sm text-red-700 font-sans">❌ 构建代码知识图谱失败：' + esc(e && e.message ? e.message : String(e)) + '</p>'; return; }
       if (!p.graph) { box.innerHTML = '<span class="toc-empty">仓库关系尚未构建。</span>'; return; }
       const hasReal = p.graph.calls.length > 0 || p.graph.imports.length > 0;
       box.innerHTML = '<span class="inline-flex items-center gap-2 text-stone-500"><span class="spinner spinner-dark"></span>构建知识图谱中…</span>';
