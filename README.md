@@ -48,8 +48,8 @@ python -m http.server 8000
 
 ## 演示（Demo）
 
-> 演示 GIF 发布前录制（放入 `docs/demo.gif`）。推荐 30 秒流程：① 粘贴一个 VibeCoding 项目仓库 → ② 勾选「🎯 这是我自己的 VibeCoding 项目」→ ③ 看「指挥 AI 的行动清单」→ ④ 点「AI 变更审计」→ ⑤ 在「项目问答」追问。
-> 嫌手动麻烦可运行 `node scripts/record-demo.mjs`（需先 `npm i playwright` 并 `npx playwright install chromium`）自动驱动页面并录屏，再用 `ffmpeg` 把 `docs/*.webm` 转成 GIF。
+> 演示 GIF 发布前录制（放入 `docs/demo.gif`）。推荐 30 秒流程：① 填模型配置并「验证配置」→ ② 粘贴一个 VibeCoding 项目仓库并勾选「🎯 这是我自己的 VibeCoding 项目」→ ③「加载仓库」后看「指挥 AI 的行动清单」→ ④ 点「🔍 AI 变更审计」→ ⑤ 在「项目问答」追问。
+> 可用 `scripts/record-demo.mjs` 自动驱动页面并录屏（需先 `npm i playwright` + `npx playwright install chromium`）。**该脚本依赖真实 API 配置**：通过环境变量 `DEMO_URL` / `DEMO_API_KEY` / `DEMO_BASE_URL` / `DEMO_MODEL` / `DEMO_REPO` 注入，**key 仅供本地录制、请替换为临时 key 且勿提交**；脚本会先完成「验证配置」再执行后续步骤（验证/加载/审计/问答均会真实调用 API，需联网）。录制产物为 `docs/*.webm`，再用 `ffmpeg -i docs/*.webm -vf "fps=12,scale=720:-1" docs/demo.gif` 转 GIF。选择器按页面实际 DOM（id 匹配）编写，若元素 id 变动请同步更新脚本。
 
 ## 与 DeepWiki / Zread 对比
 
