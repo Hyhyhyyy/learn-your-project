@@ -297,7 +297,7 @@
             <div class="space-y-2 md:col-span-2">
               <label class="block font-sans text-sm text-stone-700">基地址（Base URL）</label>
               <input id="baseURL" type="text" class="w-full px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
-              <p class="font-sans text-xs text-stone-500">⚠️ 需填「/chat/completions 所在目录」，即结尾通常要带 <code class="bg-stone-100 px-1 rounded">/v1</code>（例如 Ollama 应为 <code class="bg-stone-100 px-1 rounded">http://localhost:11434/v1</code>，只填 <code class="bg-stone-100 px-1 rounded">http://localhost:11434</code> 会 404）。</p>
+              <p id="baseURLHint" class="font-sans text-xs text-stone-500">⚠️ OpenAI 兼容：结尾通常要带 <code class="bg-stone-100 px-1 rounded">/v1</code>（例如 Ollama 应为 <code class="bg-stone-100 px-1 rounded">http://localhost:11434/v1</code>，只填 <code class="bg-stone-100 px-1 rounded">http://localhost:11434</code> 会 404）。</p>
             </div>
           </div>
           <p class="font-sans text-xs text-stone-500 mt-4">💡 浏览器会自动使用你的系统代理，无需单独配置。例如百炼：基地址 <code class="bg-stone-100 px-1 rounded">https://dashscope.aliyuncs.com/compatible-mode/v1</code>，模型 <code class="bg-stone-100 px-1 rounded">qwen-plus</code>。模型栏为候选建议，可下拉选择也可直接手填任意模型名。</p>
@@ -318,7 +318,29 @@
                 <span>问答前用 LLM 改写查询（中文更准）</span>
               </div>
             </div>
-            <p class="font-sans text-xs text-stone-500 mt-3">向量检索：用你配置的同一 API 端点计算 Embedding，浏览器本地做余弦相似度，无后端。开启后会按块调用 Embedding（消耗 token，已抓取文件越多越慢），问答更懂代码语义。</p>
+            <p class="font-sans text-xs text-stone-500 mt-3">向量检索：用你配置的 Embedding 端点计算向量，浏览器本地做余弦相似度，无后端。开启后会按块调用 Embedding（消耗 token，已抓取文件越多越慢），问答更懂代码语义。</p>
+            <div class="mt-3 p-3 rounded-[1rem] bg-white/50 border border-stone-200">
+              <div class="font-sans text-xs text-stone-600 mb-2 font-medium">⚙️ Embedding 专用端点（可选 · 用于兑现「另配 Embedding」）</div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div class="space-y-1">
+                  <label class="block font-sans text-xs text-stone-600">专用基地址</label>
+                  <input id="embedBaseURL" type="text" class="w-full px-3 py-2 bg-white border border-stone-200 rounded-full text-stone-800 text-xs focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300" placeholder="留空则用上方主端点" />
+                </div>
+                <div class="space-y-1">
+                  <label class="block font-sans text-xs text-stone-600">专用协议风格</label>
+                  <select id="embedApiStyle" class="w-full px-3 py-2 bg-white border border-stone-200 rounded-full text-stone-800 text-xs focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300">
+                    <option value="">沿用主 API 风格</option>
+                    <option value="openai">OpenAI 兼容（/embeddings）</option>
+                    <option value="gemini">Gemini 原生（/v1beta）</option>
+                  </select>
+                </div>
+                <div class="space-y-1">
+                  <label class="block font-sans text-xs text-stone-600">专用 Key（可选）</label>
+                  <input id="embedApiKey" type="password" autocomplete="off" class="w-full px-3 py-2 bg-white border border-stone-200 rounded-full text-stone-800 text-xs focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300" placeholder="留空则用主 Key" />
+                </div>
+              </div>
+              <p class="font-sans text-xs text-stone-500 mt-2">主风格为 Claude（原生不支持 Embedding）时，在此填一个 OpenAI 兼容的 Embedding 端点（如 OpenAI / Voyage / 本地 bge）即可启用向量检索；Gemini 可直接用同一端点。三者留空则沿用主端点。</p>
+            </div>
           </div>
           <div class="mt-6 flex items-center gap-4 flex-wrap">
             <button id="testBtn" onclick="testConfig()" class="px-6 py-3 rounded-full font-medium transition-colors duration-300 bg-transparent text-stone-800 border border-stone-300 hover:bg-stone-100">🔌 验证配置</button>
@@ -528,9 +550,10 @@
           ghToken: o.ghToken || '',
           retrievalMode: (o.retrievalMode === 'vector') ? 'vector' : 'tfidf',
           embedModel: o.embedModel || '',
+          embedBaseURL: o.embedBaseURL || '', embedApiStyle: o.embedApiStyle || '', embedApiKey: o.embedApiKey || '',
           rewriteQuery: o.rewriteQuery !== false,
         };
-      } catch (e) { return { apiKey:'', baseURL:'', model:'', provider:'custom', apiStyle:'openai', ghToken:'', retrievalMode:'tfidf', embedModel:'', rewriteQuery:true }; }
+      } catch (e) { return { apiKey:'', baseURL:'', model:'', provider:'custom', apiStyle:'openai', ghToken:'', retrievalMode:'tfidf', embedModel:'', embedBaseURL:'', embedApiStyle:'', embedApiKey:'', rewriteQuery:true }; }
     }
     function saveAppSettings() {
       appSettings.apiKey = $('apiKey').value.trim();
@@ -542,6 +565,9 @@
       const rm = document.querySelector('input[name="retrievalMode"]:checked');
       if (rm) appSettings.retrievalMode = rm.value;
       appSettings.embedModel = $('embedModel') ? $('embedModel').value.trim() : '';
+      appSettings.embedBaseURL = $('embedBaseURL') ? $('embedBaseURL').value.trim() : '';
+      appSettings.embedApiStyle = $('embedApiStyle') ? $('embedApiStyle').value : '';
+      appSettings.embedApiKey = $('embedApiKey') ? $('embedApiKey').value.trim() : '';
       const rq = $('rewriteQuery'); if (rq) appSettings.rewriteQuery = rq.checked;
       try { localStorage.setItem(CONFIG_KEY, JSON.stringify(appSettings)); } catch(e){}
     }
@@ -713,18 +739,32 @@
     if ($('apiStyle')) $('apiStyle').addEventListener('change', ()=>{ updateApiStyleNote(); markConfigStale(); saveAppSettings(); });
     function updateApiStyleNote() {
       const el = $('apiStyleNote'); if (!el) return;
+      const style = $('apiStyle').value;
+      const hints = {
+        openai: '⚠️ OpenAI 兼容：基地址结尾通常要带 <code class="bg-stone-100 px-1 rounded">/v1</code>（如 Ollama 应为 <code class="bg-stone-100 px-1 rounded">http://localhost:11434/v1</code>，只填根域会 404）。',
+        anthropic: '⚠️ Anthropic 原生：基地址填「根域」即可（如 <code class="bg-stone-100 px-1 rounded">https://api.anthropic.com</code>），无需带 /v1，系统会自动拼 /v1/messages。',
+        gemini: '⚠️ Gemini 原生：基地址填「…/v1beta」（如 <code class="bg-stone-100 px-1 rounded">https://generativelanguage.googleapis.com/v1beta</code>），系统会自动拼模型路径。'
+      };
       const notes = {
         openai:'OpenAI 兼容协议：请求 /chat/completions，最通用，DeepSeek / 百炼 / Moonshot / OpenRouter 等均属此类。',
-        anthropic:'Anthropic Claude 原生协议：请求 /v1/messages，system 单独字段，不支持 Embedding；如需向量检索请另配 OpenAI 兼容端点或改选 TF-IDF。',
-        gemini:'Google Gemini 原生协议：请求 /v1beta/models/{model}:generateContent，内容格式为 contents/parts；如需向量检索请另配 OpenAI 兼容端点或改选 TF-IDF。'
+        anthropic:'Anthropic Claude 原生协议：请求 /v1/messages，system 单独字段；原生不支持 Embedding，可在下方「Embedding 专用端点」填一个 OpenAI 兼容端点以启用向量检索。',
+        gemini:'Google Gemini 原生协议：请求 /v1beta/models/{model}:generateContent，内容格式为 contents/parts；向量检索可直接用同一个 Gemini 端点（text-embedding-004 等）。'
       };
-      el.textContent = notes[$('apiStyle').value] || '';
+      const h = $('baseURLHint'); if (h) h.innerHTML = hints[style] || hints.openai;
+      const pm = $('embedModel'); if (pm) {
+        const ph = { openai:'text-embedding-3-small / bge-m3 等', anthropic:'（原生不支持；请在下方专用端点填 OpenAI 兼容 Embedding）', gemini:'text-embedding-004 等 Gemini Embedding 模型' };
+        pm.placeholder = ph[style] || ph.openai;
+      }
+      el.innerHTML = notes[style] || '';
       el.classList.toggle('hidden', !el.textContent);
     }
     ['apiKey','baseURL','model','ghToken'].forEach((id)=>$(id).addEventListener('input', ()=>{ markConfigStale(); saveAppSettings(); }));
     const _rmRadios = document.querySelectorAll('input[name="retrievalMode"]');
     _rmRadios.forEach((r)=>r.addEventListener('change', ()=>{ saveAppSettings(); onRetrievalModeChange(); }));
     if ($('embedModel')) $('embedModel').addEventListener('input', saveAppSettings);
+    if ($('embedBaseURL')) $('embedBaseURL').addEventListener('input', saveAppSettings);
+    if ($('embedApiStyle')) $('embedApiStyle').addEventListener('change', saveAppSettings);
+    if ($('embedApiKey')) $('embedApiKey').addEventListener('input', saveAppSettings);
     if ($('rewriteQuery')) $('rewriteQuery').addEventListener('change', saveAppSettings);
     setRepoEnabled(false);
 
@@ -801,10 +841,21 @@
         return { content, usage };
       } finally { clearTimeout(t); }
     }
-    async function callAnthropic({ apiKey, baseURL, model, messages, temperature=0.6, max_tokens=null, timeout=120000, stream=false, onToken=null }) {
+    // 端点归一化：用户可能把 /v1、/v1beta 填进 baseURL，统一去掉再按协议拼接，避免 .../v1/v1/messages 这类重复路径导致 404
+    function anthropicChatURL(baseURL) {
+      let base = (baseURL || '').replace(/\/+$/, '');
+      base = base.replace(/\/(?:v1beta|v1)$/, '');
+      return base + '/v1/messages';
+    }
+    function geminiAPIRoot(baseURL) {
+      let base = (baseURL || '').replace(/\/+$/, '');
+      base = base.replace(/\/v1beta$/, '');   // 先去掉，统一拼 /v1beta 兜底
+      return base + '/v1beta';
+    }
+    async function callAnthropic({ apiKey, baseURL, model, messages, temperature=0.6, max_tokens=null,  timeout=120000, stream=false, onToken=null }) {
       if (!apiKey) throw new Error('缺少 API Key');
       if (!baseURL) throw new Error('缺少基地址');
-      const url = baseURL.replace(/\/+$/,'') + '/v1/messages';
+      const url = anthropicChatURL(baseURL);
       let system = '';
       const msgs = [];
       for (const m of messages || []) {
@@ -871,7 +922,7 @@
       if (!apiKey) throw new Error('缺少 API Key');
       if (!baseURL) throw new Error('缺少基地址');
       if (!model) throw new Error('缺少模型名');
-      const base = baseURL.replace(/\/+$/,'');
+      const base = geminiAPIRoot(baseURL);
       const url = base + '/models/' + model + (stream ? ':streamGenerateContent?alt=sse' : ':generateContent');
       const contents = [];
       let sysText = '';
@@ -902,7 +953,15 @@
         if (!stream) {
           const data = await res.json();
           const content = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text) || '';
-          return { content, usage: null };
+          // Gemini 在响应里返回 usageMetadata；缺失时按字符长度估算，避免 token 统计显示「—」
+          const um = data.usageMetadata;
+          let usage = um ? { prompt_tokens: um.promptTokenCount || 0, completion_tokens: um.candidatesTokenCount || 0, total_tokens: um.totalTokenCount || 0 } : null;
+          if (!usage || !usage.total_tokens) {
+            const est = (s) => Math.max(1, Math.ceil((s||'').length / 1.8));
+            usage = { prompt_tokens: est(JSON.stringify(messages)), completion_tokens: est(content), total_tokens: 0, _estimated: true };
+            usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+          }
+          return { content, usage };
         }
         // Gemini 流式：alt=sse 返回 SSE，但 data 字段是 JSON 对象（不是 JSON 字符串包裹），兼容处理
         const reader = res.body.getReader();
@@ -1173,13 +1232,33 @@
       try { return await new Promise((res) => { const tx = db.transaction(CACHE_STORE, 'readonly'); const rq = tx.objectStore(CACHE_STORE).get(key); rq.onsuccess = () => res(rq.result || null); rq.onerror = () => res(null); }); }
       finally { try { db.close(); } catch(e){} }
     }
+    // 检索索引里的 df 是 Map，JSON 序列化（localStorage 回退路径）会退化为 {} → idf 全部失效。
+    // 缓存前统一转成可 JSON 化的结构，恢复时重建 Map，保证任一存储路径下检索质量一致。
+    function normalizeIndexForCache(index) {
+      if (!index) return null;
+      return {
+        chunks: index.chunks,
+        tokenized: index.tokenized,
+        df: (index.df instanceof Map) ? Array.from(index.df.entries()) : (Array.isArray(index.df) ? index.df : []),
+        N: index.N
+      };
+    }
+    function restoreIndexFromCache(idx) {
+      if (!idx) return null;
+      return {
+        chunks: idx.chunks,
+        tokenized: idx.tokenized,
+        df: new Map(idx.df || []),
+        N: idx.N
+      };
+    }
     async function saveProjectCache(project) {
       // 同时保存向量索引与 embedded 标记，使「缓存秒开」后仍能保留深度检索能力
       const data = {
         name: project.name, owner: project.owner, repo: project.repo, branch: project.branch,
         tree: project.tree, files: project.files.map((f)=>({ path:f.path, content:f.content, size:f.size })),
         description: project.description, language: project.language, method: project.method, url: project.url,
-        graph: project.graph, facts: project.facts, embedded: project.embedded || false, index: project.index || null, cachedAt: Date.now()
+        graph: project.graph, facts: project.facts, embedded: project.embedded || false, index: normalizeIndexForCache(project.index || null), cachedAt: Date.now()
       };
       try {
         await _idbPut(cacheKeyFor(project.owner, project.repo), data);
@@ -1194,8 +1273,14 @@
       }
     }
     async function loadProjectCache(owner, repo) {
-      try { const d = await _idbGet(cacheKeyFor(owner, repo)); if (d && d.files) return d; } catch(e){}
-      try { const s = localStorage.getItem(cacheKeyFor(owner, repo)); if (s) { const d = JSON.parse(s); if (d && d.files) return d; } } catch(e){}
+      try {
+        const d = await _idbGet(cacheKeyFor(owner, repo));
+        if (d && d.files) { d.index = restoreIndexFromCache(d.index); return d; }
+      } catch(e){}
+      try {
+        const s = localStorage.getItem(cacheKeyFor(owner, repo));
+        if (s) { const d = JSON.parse(s); if (d && d.files) { d.index = restoreIndexFromCache(d.index); return d; } }
+      } catch(e){}
       return null;
     }
     // 通用的「载入后处理」：构建索引 + 显示工作区 + 构建图谱/概览/建议。本地文件夹与缓存恢复共用
@@ -2907,33 +2992,37 @@
 
     // ---------- Embedding（深度向量检索，无后端） ----------
     async function callEmbed({ apiKey, baseURL, model, inputs, timeout=60000, apiStyle }) {
-      if (!apiKey) throw new Error('缺少 API Key');
-      if (!baseURL) throw new Error('缺少基地址');
       if (!model) throw new Error('缺少 Embedding 模型');
-      const style = apiStyle || getConfig().apiStyle || 'openai';
-      if (style === 'anthropic') throw new Error('Anthropic Claude 原生 API 暂不支持 Embedding。如需向量检索，请另配一个 OpenAI 兼容的 Embedding 端点，或在检索设置里切换为「轻量 TF-IDF」。');
-      if (style === 'gemini') {
-        const base = baseURL.replace(/\/+$/,'');
-        const url = base + '/models/' + model + ':embedContent';
+      // 优先使用「Embedding 专用端点」配置：单独填的基地址 / 协议风格 / Key；留空则沿用主端点
+      const eBaseURL = ($('embedBaseURL') ? $('embedBaseURL').value.trim() : '') || baseURL;
+      const eApiKey = ($('embedApiKey') ? $('embedApiKey').value.trim() : '') || apiKey;
+      const eApiStyle = ($('embedApiStyle') ? $('embedApiStyle').value : '') || apiStyle || getConfig().apiStyle || 'openai';
+      if (!eApiKey) throw new Error('缺少 API Key（请填写主端点的 Key，或在「Embedding 专用 Key」单独填）');
+      if (!eBaseURL) throw new Error('缺少基地址（请填写主端点基地址，或在「Embedding 专用基地址」单独填）');
+      if (eApiStyle === 'anthropic') throw new Error('Anthropic Claude 原生 API 不支持 Embedding。请在「Embedding 专用端点」填一个 OpenAI 兼容端点，或改用「轻量 TF-IDF」。');
+      if (eApiStyle === 'gemini') {
+        // 改用 :batchEmbedContents 单次批量请求，避免逐条串行导致大批量 chunk 超时回退 TF-IDF
+        const root = geminiAPIRoot(eBaseURL);
+        const url = root + '/models/' + model + ':batchEmbedContents';
         const ac = new AbortController();
         const t = setTimeout(()=>ac.abort(), timeout);
         try {
-          const out = [];
-          for (const text of inputs) {
-            const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json','x-goog-api-key':apiKey}, body: JSON.stringify({ content:{ parts:[{ text }] } }), signal: ac.signal });
-            if (!res.ok) { let msg = res.status + ' ' + res.statusText; try { const j = await res.json(); if (j && j.error && j.error.message) msg += ' — ' + j.error.message; } catch(e){} throw new Error('Gemini Embedding 失败：' + msg); }
-            const data = await res.json();
-            out.push((data.embedding && data.embedding.values) || []);
-          }
-          return out;
+          const requests = inputs.map((text)=>({ model: 'models/' + model, content: { parts: [{ text }] } }));
+          const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json','x-goog-api-key':eApiKey}, body: JSON.stringify({ requests }), signal: ac.signal });
+          if (!res.ok) { let msg = res.status + ' ' + res.statusText; try { const j = await res.json(); if (j && j.error && j.error.message) msg += ' — ' + j.error.message; } catch(e){} throw new Error('Gemini Embedding 失败：' + msg); }
+          const data = await res.json();
+          const embs = data.embeddings || [];
+          // 保证输出顺序与 inputs 一致；缺失项补空前量避免检索崩溃
+          return inputs.map((_, i) => (embs[i] && embs[i].values) || []);
         } finally { clearTimeout(t); }
       }
-      const url = baseURL.replace(/\/+$/,'') + '/embeddings';
+      // OpenAI 兼容（含 Ollama / DeepSeek / 百炼 / Voyage 等）
+      const url = eBaseURL.replace(/\/+$/,'') + '/embeddings';
       const ac = new AbortController();
       const t = setTimeout(()=>ac.abort(), timeout);
       try {
-        const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey}, body: JSON.stringify({ model, input: inputs }), signal: ac.signal });
-        if (!res.ok) { let msg = res.status + ' ' + res.statusText; try { const j = await res.json(); if (j && j.error && j.error.message) msg += ' — ' + j.error.message; } catch(e){} throw new Error('Embedding 失败：' + msg); }
+        const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+eApiKey}, body: JSON.stringify({ model, input: inputs }), signal: ac.signal });
+        if (!res.ok) { let msg = res.status + ' ' + res.statusText; try { const j = await res.json(); if (j && j.error && j.error.message) msg += ' — ' + j.error.message; } catch(e){} throw new  Error('Embedding 失败：' + msg); }
         const data = await res.json();
         return (data.data || []).map((d) => d.embedding);
       } finally { clearTimeout(t); }
@@ -2974,7 +3063,11 @@
       if (currentProject.embedded) return;
       if (!confirm('切换到向量检索需要为已抓取的 ' + currentProject.files.length + ' 个文件的切块计算 Embedding（会消耗 API token，可能需要一会儿）。现在计算？')) { document.querySelector('input[name="retrievalMode"][value="tfidf"]').checked = true; return; }
       setBusy(true);
-      try { await computeEmbeddings(currentProject, (d,t)=>{ const s=$('repoStatus'); if (s) s.textContent='🧮 正在计算向量索引 '+d+'/'+t+'…'; }); alert('✅ 向量索引已生成，问答将使用深度向量检索。'); }
+      try {
+        await computeEmbeddings(currentProject, (d,t)=>{ const s=$('repoStatus'); if (s) s.textContent='🧮 正在计算向量索引 '+d+'/'+t+'…'; });
+        try { await saveProjectCache(currentProject); } catch(e){ console.warn('向量索引写回缓存失败：', e.message); }  // 写回，下次「缓存秒开」保留向量索引
+        alert('✅ 向量索引已生成，问答将使用深度向量检索。');
+      }
       catch(e){ alert('Embedding 计算失败：' + e.message); document.querySelector('input[name="retrievalMode"][value="tfidf"]').checked = true; }
       finally { setBusy(false); }
     }
@@ -2998,6 +3091,9 @@
         if (appSettings.ghToken) $('ghToken').value = appSettings.ghToken;
         if ($('apiStyle')) { $('apiStyle').value = appSettings.apiStyle || 'openai'; updateApiStyleNote(); }
         if ($('embedModel')) $('embedModel').value = appSettings.embedModel || '';
+        if ($('embedBaseURL')) $('embedBaseURL').value = appSettings.embedBaseURL || '';
+        if ($('embedApiStyle')) $('embedApiStyle').value = appSettings.embedApiStyle || '';
+        if ($('embedApiKey')) $('embedApiKey').value = appSettings.embedApiKey || '';
         if ($('rewriteQuery')) $('rewriteQuery').checked = appSettings.rewriteQuery !== false;
         const rm = document.querySelector('input[name="retrievalMode"][value="'+appSettings.retrievalMode+'"]');
         if (rm) rm.checked = true;
