@@ -80,6 +80,19 @@
     .tp-reset { display:inline-block; margin-top:0.35rem; font-size:0.68rem; color:#a8a29e; cursor:pointer; }
     .tp-reset:hover { color:#57534e; }
     @media (max-width:640px){ .token-panel{ right:8px; bottom:8px; min-width:150px; font-size:0.68rem; } }
+    /* 浮动本页目录（DeepWiki 风格） */
+    .toc-panel { position:fixed; right:14px; top:96px; z-index:30; width:220px; max-height:62vh; overflow-y:auto; background:#fff; border:1px solid #e7e2da; border-radius:0.9rem; padding:0.6rem 0.7rem; box-shadow:0 8px 24px -16px rgba(92,64,51,0.3); font-size:0.74rem; }
+    .toc-title { font-weight:700; color:#44403c; margin-bottom:0.35rem; }
+    .toc-item { display:block; padding:0.2rem 0.4rem; border-radius:0.4rem; color:#78716c; cursor:pointer; line-height:1.4; border-left:2px solid transparent; }
+    .toc-item:hover { background:#f5f1ea; color:#57534e; }
+    .toc-item.active { color:#4f6e3e; border-left-color:#8b9d77; background:rgba(139,157,119,0.10); font-weight:600; }
+    .toc-empty { color:#a8a29e; font-size:0.7rem; }
+    @media (max-width:1024px){ .toc-panel{ display:none !important; } }
+    /* 概览仪表盘 */
+    .lang-bar { display:flex; height:14px; border-radius:7px; overflow:hidden; background:#efe9e1; }
+    .lang-seg { transition:width .3s; }
+    .ov-card { background:#fff; border:1px solid #e7e2da; border-radius:1rem; padding:0.9rem 1.1rem; }
+    .ov-chip { display:inline-block; background:#f5f1ea; border:1px solid #e7e2da; border-radius:999px; padding:0.15rem 0.6rem; font-size:0.72rem; color:#57534e; margin:0.15rem; }
   </style>
 </head>
 <body class="paper-grain">
@@ -199,11 +212,20 @@
           </div>
 
           <div class="flex gap-2 border-b border-stone-200 mb-6 flex-wrap">
-            <button data-tab="report" onclick="switchTab('report')" class="tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 bg-stone-800 text-stone-50">评估报告</button>
+            <button data-tab="overview" onclick="switchTab('overview')" class="tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 bg-stone-800 text-stone-50">📋 概览</button>
+            <button data-tab="report" onclick="switchTab('report')" class="tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 bg-transparent text-stone-600 border border-stone-300 hover:bg-stone-100">评估报告</button>
             <button data-tab="tutorial" onclick="switchTab('tutorial')" class="tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 bg-transparent text-stone-600 border border-stone-300 hover:bg-stone-100">图文教学</button>
             <button data-tab="chat" onclick="switchTab('chat')" class="tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 bg-transparent text-stone-600 border border-stone-300 hover:bg-stone-100">项目问答</button>
             <button data-tab="history" onclick="switchTab('history')" class="tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 bg-transparent text-stone-600 border border-stone-300 hover:bg-stone-100">🗂️ 历史仓库</button>
           </div>
+
+          <!-- 概览（DeepWiki 风格：加载后即时客户端仪表盘，无需 LLM） -->
+          <div id="tab-overview" class="tab-pane hidden">
+            <div id="overviewBox" class="space-y-5"></div>
+          </div>
+
+          <!-- 浮动本页目录（DeepWiki 风格导航） -->
+          <aside id="tocPanel" class="toc-panel hidden"></aside>
 
           <div id="tab-report" class="tab-pane">
             <div class="flex items-center gap-3 mb-4 flex-wrap">
@@ -605,6 +627,8 @@
           $('workspace').scrollIntoView({ behavior:'smooth' });
           setReady(true);
           addHistoryRecord({ name: project.name, owner, repo, url: repoUrl, language: project.language||'', branch: project.branch, fileCount: files.length, treeCount: tree.length, loadedAt: Date.now() });
+          buildOverview();
+          switchTab('overview');
         } finally { clearTimeout(timer); }
       } catch (e) {
         clearInterval(ticker);
@@ -721,6 +745,7 @@
       el.classList.add('fade-in');
       try { wrapSections(el); } catch(e){}
       renderMermaid(el);
+      if (el.id === 'reportBox' || el.id === 'tutorialBox') buildTOC(el.id);
     }
 
     // 安全渲染 Mermaid：先用 mermaid.parse() 同步校验语法，再渲染；渲染后校验实际节点/边；任何失败/空/可疑 → 浅色代码块兜底
@@ -848,6 +873,10 @@
         const active = b.dataset.tab === tab;
         b.className = 'tab-btn px-5 py-2 rounded-full font-medium text-sm transition-colors duration-300 ' + (active ? 'bg-stone-800 text-stone-50' : 'bg-transparent text-stone-600 border border-stone-300 hover:bg-stone-100');
       });
+      // 目录：仅评估报告/图文教学显示
+      if (tab === 'report') buildTOC('reportBox');
+      else if (tab === 'tutorial') buildTOC('tutorialBox');
+      else { if (tocSpy) { cancelAnimationFrame(tocSpy); tocSpy = null; } $('tocPanel').classList.add('hidden'); }
       if (tab === 'chat') $('chatInput').focus();
     }
 
@@ -1023,6 +1052,110 @@
     }
     renderHistory();
     renderTokens();
+
+    // ---------- 概览仪表盘（DeepWiki 风格，纯客户端，无需 LLM） ----------
+    const LANG_COLORS = { javascript:'#f1e05a', typescript:'#3178c6', python:'#3572A5', java:'#b07219', go:'#00ADD8', rust:'#dea584', c:'#555555', cpp:'#f34b7d', csharp:'#178600', ruby:'#701516', php:'#4F5D95', swift:'#F05138', kotlin:'#A97BFF', dart:'#00B4AB', html:'#e34c26', css:'#563d7c', vue:'#41b883', svelte:'#ff3e00', shell:'#89e051', markdown:'#083fa1', json:'#cbcbcb', yaml:'#cb171e', dockerfile:'#384d54', makefile:'#427819' };
+    function langOf(p) { const b = p.split('/').pop().toLowerCase(); if (b === 'dockerfile') return 'dockerfile'; if (b === 'makefile') return 'makefile'; const e = fileExt(p); return e || '其他'; }
+    function esc(s) { return (s||'').replace(/[&<>"']/g, (c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function buildOverview() {
+      const p = currentProject; if (!p) return;
+      const box = $('overviewBox'); if (!box) return;
+      // 语言占比
+      const langCount = {};
+      for (const f of p.tree) { const l = langOf(f); langCount[l] = (langCount[l]||0)+1; }
+      const total = p.tree.length || 1;
+      const langs = Object.entries(langCount).sort((a,b)=>b[1]-a[1]);
+      const langBar = '<div class="lang-bar">' + langs.slice(0,8).map(([l,c])=>{ const pct = (c/total*100).toFixed(1); const col = LANG_COLORS[l] || '#a8a29e'; return '<div class="lang-seg" style="width:'+pct+'%;background:'+col+'" title="'+esc(l)+' '+pct+'%"></div>'; }).join('') + '</div>';
+      const langLegend = langs.slice(0,8).map(([l,c])=>{ const pct=(c/total*100).toFixed(1); const col=LANG_COLORS[l]||'#a8a29e'; return '<span class="ov-chip"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+col+';margin-right:4px;vertical-align:middle;"></span>'+esc(l)+' '+pct+'%</span>'; }).join('');
+      // 顶层目录
+      const dirs = {};
+      for (const f of p.tree) { const seg = f.split('/')[0]; if (f.includes('/')) dirs[seg] = (dirs[seg]||0)+1; }
+      const topDirs = Object.entries(dirs).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([d,c])=>'<span class="ov-chip">📁 '+esc(d)+' <span style="color:#a8a29e">('+c+')</span></span>').join('') || '<span class="toc-empty">（无子目录）</span>';
+      // 依赖清单（解析 manifests）
+      const deps = parseDeps(p.files);
+      const depsHtml = deps.length ? deps.map((d)=>'<span class="ov-chip">'+esc(d.name)+(d.ver?(' '+esc(d.ver)):'')+'</span>').join('') : '<span class="toc-empty">未识别到依赖清单（package.json / requirements.txt / go.mod / Cargo.toml 等）</span>';
+      box.innerHTML =
+        '<div class="ov-card"><div class="font-serif text-lg text-stone-800">📦 '+esc(p.name)+'</div>'+(p.description?'<div class="text-sm text-stone-600 mt-1">'+esc(p.description)+'</div>':'')+'<div class="text-xs text-stone-500 mt-1">主语言：'+esc(p.language||'未知')+' · 分支：'+esc(p.branch)+' · 文件总数：'+p.tree.length+' · 已抓取内容：'+p.files.length+'</div></div>'
+        + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">语言占比</div>'+langBar+'<div class="mt-2">'+langLegend+'</div></div>'
+        + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">顶层目录</div>'+topDirs+'</div>'
+        + '<div class="ov-card"><div class="font-serif text-base text-stone-800 mb-2">依赖清单</div>'+depsHtml+'</div>'
+        + '<div class="ov-card"><div class="flex items-center justify-between flex-wrap gap-2 mb-2"><div class="font-serif text-base text-stone-800">依赖关系图（GitNexus 风格·精简）</div><button onclick="buildDepGraph()" class="px-4 py-1.5 rounded-full font-medium text-xs transition-colors duration-300 bg-stone-800 text-stone-50 hover:bg-stone-700">🔬 生成关系图</button></div><div id="depGraphBox" class="text-sm text-stone-400">点击上方按钮，从已加载文件的 import/require 语句扫描模块依赖并绘制。</div></div>';
+    }
+    // 解析依赖清单
+    function parseDeps(files) {
+      const out = [];
+      const grab = (name) => { const f = files.find((x) => (x.path.split('/').pop().toLowerCase())===name); return f ? f.content : null; };
+      // package.json
+      const pkg = grab('package.json'); if (pkg) { try { const j = JSON.parse(pkg); for (const s of ['dependencies','devDependencies']) if (j[s]) for (const [n,v] of Object.entries(j[s])) out.push({name:n, ver:v}); } catch(e){} }
+      // requirements.txt
+      const req = grab('requirements.txt'); if (req) { for (const line of req.split('\n')) { const m = line.trim().match(/^([A-Za-z0-9_.\-]+)\s*([=<>!~]=?\s*[\w.\-]+)?/); if (m && !m[1].startsWith('#')) out.push({name:m[1], ver:(m[2]||'').trim()}); } }
+      // go.mod
+      const gomod = grab('go.mod'); if (gomod) { for (const line of gomod.split('\n')) { const m = line.trim().match(/^(?:require\s+)?([A-Za-z0-9_.\-\/]+)\s+(v[\w.\-]+)/); if (m) out.push({name:m[1], ver:m[2]}); } }
+      // Cargo.toml
+      const cargo = grab('cargo.toml'); if (cargo) { for (const line of cargo.split('\n')) { const m = line.match(/^([A-Za-z0-9_\-]+)\s*=\s*["']([^"']+)["']/); if (m && !/features|path|version/.test(m[1])) out.push({name:m[1], ver:m[2]}); } }
+      return out.slice(0, 80);
+    }
+    // 扫描 import/require/from 构建模块依赖图（精简到顶层模块）
+    function buildDepGraph() {
+      const p = currentProject; if (!p) return;
+      const box = $('depGraphBox'); if (!box) return;
+      box.innerHTML = '<span class="inline-flex items-center gap-2 text-stone-500"><span class="spinner spinner-dark"></span>扫描依赖中…</span>';
+      setTimeout(() => {
+        const re = /(?:^|[^.\w])(?:import\s+(?:[\s\S]*?from\s+)?|require\s*\(\s*|from\s+|include\s+|using\s+|use\s+)(["''])([^"'\n]+)\1/g;
+        const edges = new Set(); const nodes = new Set();
+        for (const f of p.files) {
+          const src = f.path;
+          const top = src.split('/')[0];
+          let m;
+          re.lastIndex = 0;
+          while ((m = re.exec(f.content || '')) !== null) {
+            const tgt = m[2];
+            if (/^(https?:|\/|\.)|json|css|svg|png|jpg|jpeg|gif|woff|ttf|wasm$/i.test(tgt)) continue;
+            const tmod = tgt.replace(/^\.\/|^\.\.\//,'').split('/')[0] || tgt;
+            if (top && tmod && top !== tmod) { edges.add(top+' --> '+tmod); nodes.add(top); nodes.add(tmod); }
+          }
+        }
+        if (!edges.size) { box.innerHTML = '<span class="toc-empty">未在已加载文件中识别到跨模块 import/require 关系（可能文件未全部抓取，或项目较小）。</span>'; return; }
+        const lines = 'flowchart LR\n' + [...new Set([...nodes].slice(0,60))].map((n)=>'  '+esc(n)).join('\n') + '\n' + [...edges].slice(0,200).map((e)=>'  '+e).join('\n');
+        box.innerHTML = '<pre class="md-fallback"><code class="language-mermaid">'+esc(lines)+'</code></pre>';
+        const code = box.querySelector('code.language-mermaid');
+        if (code && window.mermaid) {
+          const wrap = document.createElement('div');
+          box.innerHTML = ''; box.appendChild(wrap); wrap.className = 'md';
+          const ce = document.createElement('pre'); ce.style.display='none'; const cc = document.createElement('code'); cc.className='language-mermaid'; cc.textContent = lines; ce.appendChild(cc); wrap.appendChild(ce);
+          renderMermaid(wrap);
+        }
+      }, 30);
+    }
+
+    // ---------- 浮动本页目录（TOC） ----------
+    let tocSpy = null;
+    function buildTOC(boxId) {
+      const panel = $('tocPanel');
+      const box = $(boxId);
+      if (!box) { panel.classList.add('hidden'); return; }
+      const heads = Array.from(box.querySelectorAll('h2, h3'));
+      if (!heads.length) { panel.classList.add('hidden'); return; }
+      panel.classList.remove('hidden');
+      let html = '<div class="toc-title">📑 本页目录</div>';
+      heads.forEach((h, i) => {
+        if (!h.id) h.id = 'toc-h-' + i;
+        const cls = 'toc-item' + (h.tagName === 'H3' ? ' toc-sub' : '');
+        html += '<a class="'+cls+'" onclick="scrollToHead(\''+h.id+'\')">'+esc(h.textContent||'')+'</a>';
+      });
+      panel.innerHTML = html;
+      // scroll-spy
+      if (tocSpy) cancelAnimationFrame(tocSpy);
+      const spy = () => {
+        let active = -1;
+        for (let i = 0; i < heads.length; i++) { if (heads[i].getBoundingClientRect().top < 140) active = i; }
+        const items = panel.querySelectorAll('.toc-item');
+        items.forEach((it, i) => it.classList.toggle('active', i === active));
+        tocSpy = requestAnimationFrame(spy);
+      };
+      spy();
+    }
+    function scrollToHead(id) { const el = document.getElementById(id); if (el) { const y = el.getBoundingClientRect().top + window.scrollY - 90; window.scrollTo({ top: y, behavior: 'smooth' }); } }
 
     if (window.mermaid) { try { mermaid.initialize({ startOnLoad:false }); } catch(e){} }
   </script>
