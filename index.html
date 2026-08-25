@@ -247,7 +247,7 @@
       <section id="config" class="scroll-mt-24">
         <div class="bg-[#faf6f1] rounded-[2rem] border border-stone-200 p-6 md:p-8 organic-shadow">
           <h2 class="font-serif text-2xl md:text-3xl text-stone-800 mb-2">① 配置大模型 API</h2>
-          <p class="font-sans text-sm text-stone-600 mb-6">支持任意 OpenAI 兼容接口（需允许浏览器跨域 CORS）。密钥仅存于本机浏览器，不会上传到任何服务器。</p>
+          <p class="font-sans text-sm text-stone-600 mb-6">支持 OpenAI 兼容接口，也支持 Anthropic Claude / Google Gemini 原生 API（需允许浏览器跨域 CORS）。密钥仅存于本机浏览器，不会上传到任何服务器。</p>
           <div class="space-y-2 mb-6">
             <label class="block font-sans text-sm text-stone-700">服务商预设</label>
             <select id="provider" class="w-full md:w-2/3 px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300">
@@ -264,6 +264,8 @@
               <option value="stepfun">阶跃星辰 StepFun</option>
               <option value="yi">零一万物 Yi</option>
               <option value="gemini">Google Gemini（OpenAI 兼容）</option>
+              <option value="gemini_native">Google Gemini（原生 API）</option>
+              <option value="anthropic">Anthropic Claude（原生 API）</option>
               <option value="openrouter">OpenRouter（聚合网关）</option>
               <option value="groq">Groq</option>
               <option value="together">Together AI</option>
@@ -272,6 +274,15 @@
               <option value="ollama">Ollama（本地）</option>
               <option value="openai">OpenAI（需梯子）</option>
             </select>
+          </div>
+          <div class="space-y-2 mb-6">
+            <label class="block font-sans text-sm text-stone-700">API 风格 / 协议适配</label>
+            <select id="apiStyle" class="w-full md:w-2/3 px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300">
+              <option value="openai">OpenAI 兼容（/chat/completions，最通用）</option>
+              <option value="anthropic">Anthropic Claude 原生（/v1/messages）</option>
+              <option value="gemini">Google Gemini 原生（/v1beta/models/...:generateContent）</option>
+            </select>
+            <p id="apiStyleNote" class="font-sans text-xs text-stone-500 hidden"></p>
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
             <div class="space-y-2">
@@ -500,7 +511,7 @@
 
     // ---------- 工具 ----------
     function getConfig() {
-      return { apiKey: $('apiKey').value.trim(), baseURL: $('baseURL').value.trim(), model: $('model').value.trim(), ghToken: $('ghToken').value.trim(), embedModel: ($('embedModel') ? $('embedModel').value.trim() : '') };
+      return { apiKey: $('apiKey').value.trim(), baseURL: $('baseURL').value.trim(), model: $('model').value.trim(), ghToken: $('ghToken').value.trim(), embedModel: ($('embedModel') ? $('embedModel').value.trim() : ''), apiStyle: ($('apiStyle') ? $('apiStyle').value : 'openai') };
     }
     function setStatus(el, msg, isErr) { el.textContent = msg; el.className = 'font-sans text-sm ' + (isErr ? 'text-red-700' : 'text-stone-600'); }
 
@@ -512,18 +523,20 @@
         const o = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}') || {};
         return {
           apiKey: o.apiKey || '', baseURL: o.baseURL || '', model: o.model || '', provider: o.provider || 'custom',
+          apiStyle: o.apiStyle || 'openai',
           ghToken: o.ghToken || '',
           retrievalMode: (o.retrievalMode === 'vector') ? 'vector' : 'tfidf',
           embedModel: o.embedModel || '',
           rewriteQuery: o.rewriteQuery !== false,
         };
-      } catch (e) { return { apiKey:'', baseURL:'', model:'', provider:'custom', ghToken:'', retrievalMode:'tfidf', embedModel:'', rewriteQuery:true }; }
+      } catch (e) { return { apiKey:'', baseURL:'', model:'', provider:'custom', apiStyle:'openai', ghToken:'', retrievalMode:'tfidf', embedModel:'', rewriteQuery:true }; }
     }
     function saveAppSettings() {
       appSettings.apiKey = $('apiKey').value.trim();
       appSettings.baseURL = $('baseURL').value.trim();
       appSettings.model = $('model').value.trim();
       appSettings.provider = $('provider').value;
+      appSettings.apiStyle = $('apiStyle') ? $('apiStyle').value : 'openai';
       appSettings.ghToken = $('ghToken').value.trim();
       const rm = document.querySelector('input[name="retrievalMode"]:checked');
       if (rm) appSettings.retrievalMode = rm.value;
@@ -635,6 +648,16 @@
         models:['gemini-3.1-pro-preview','gemini-3.5-flash','gemini-3-flash-preview','gemini-2.5-pro','gemini-2.5-flash','gemini-2.5-flash-lite'],
         note:'Google Gemini 官方 OpenAI 兼容端点（base 含 /v1beta/openai/）。需梯子；gemini-2.5-pro / flash 稳定可用，gemini-3.* 为新一代。'
       },
+      gemini_native: {
+        base:'https://generativelanguage.googleapis.com/v1beta',
+        models:['gemini-2.5-pro','gemini-2.5-flash','gemini-2.5-flash-lite','gemini-3.5-flash','gemini-3.1-pro-preview','gemini-3-flash-preview'],
+        note:'Google Gemini 原生 REST API（非 OpenAI 兼容）。base 不含末尾斜杠，调用时会自动拼接 models/{model}:generateContent。需梯子。'
+      },
+      anthropic: {
+        base:'https://api.anthropic.com',
+        models:['claude-3-5-sonnet-20241022','claude-3-5-haiku-20241022','claude-3-opus-20240229','claude-3-sonnet-20240229','claude-3-haiku-20240307'],
+        note:'Anthropic Claude 原生 API（/v1/messages）。不支持 Embedding；如需要向量检索，请另配一个 OpenAI 兼容的 Embedding 端点，或在检索设置里选「轻量 TF-IDF」。'
+      },
       openrouter: {
         base:'https://openrouter.ai/api/v1',
         models:['openai/gpt-4o','openai/gpt-4o-mini','anthropic/claude-3.5-sonnet','deepseek/deepseek-chat','deepseek/deepseek-r1','google/gemini-2.5-pro','qwen/qwen2.5-72b-instruct','meta-llama/llama-3.3-70b-instruct','mistralai/mixtral-8x7b-instruct'],
@@ -677,11 +700,26 @@
       if (p !== 'custom') $('baseURL').value = cfg.base;
       $('modelList').innerHTML = (cfg.models||[]).map((m)=>'<option value="'+m+'"></option>').join('');
       if (p !== 'custom' && cfg.models && cfg.models[0]) $('model').value = cfg.models[0];
+      // 根据服务商自动切换 API 风格
+      const styleMap = { anthropic:'anthropic', gemini_native:'gemini' };
+      const style = styleMap[p] || 'openai';
+      if ($('apiStyle')) { $('apiStyle').value = style; updateApiStyleNote(); }
       const noteEl = $('providerNote');
       if (noteEl) { noteEl.textContent = cfg.note || ''; noteEl.classList.toggle('hidden', !cfg.note); }
       markConfigStale(); saveAppSettings();
     }
     $('provider').addEventListener('change', applyProvider);
+    if ($('apiStyle')) $('apiStyle').addEventListener('change', ()=>{ updateApiStyleNote(); markConfigStale(); saveAppSettings(); });
+    function updateApiStyleNote() {
+      const el = $('apiStyleNote'); if (!el) return;
+      const notes = {
+        openai:'OpenAI 兼容协议：请求 /chat/completions，最通用，DeepSeek / 百炼 / Moonshot / OpenRouter 等均属此类。',
+        anthropic:'Anthropic Claude 原生协议：请求 /v1/messages，system 单独字段，不支持 Embedding；如需向量检索请另配 OpenAI 兼容端点或改选 TF-IDF。',
+        gemini:'Google Gemini 原生协议：请求 /v1beta/models/{model}:generateContent，内容格式为 contents/parts；如需向量检索请另配 OpenAI 兼容端点或改选 TF-IDF。'
+      };
+      el.textContent = notes[$('apiStyle').value] || '';
+      el.classList.toggle('hidden', !el.textContent);
+    }
     ['apiKey','baseURL','model','ghToken'].forEach((id)=>$(id).addEventListener('input', ()=>{ markConfigStale(); saveAppSettings(); }));
     const _rmRadios = document.querySelectorAll('input[name="retrievalMode"]');
     _rmRadios.forEach((r)=>r.addEventListener('change', ()=>{ saveAppSettings(); onRetrievalModeChange(); }));
@@ -689,8 +727,14 @@
     if ($('rewriteQuery')) $('rewriteQuery').addEventListener('change', saveAppSettings);
     setRepoEnabled(false);
 
-    // ---------- LLM 直连 ----------
-    async function callLLM({ apiKey, baseURL, model, messages, temperature=0.6, max_tokens=null, timeout=120000, stream=false, onToken=null }) {
+    // ---------- LLM 直连（OpenAI / Anthropic / Gemini 适配） ----------
+    async function callLLM(opts) {
+      const style = opts.apiStyle || getConfig().apiStyle || 'openai';
+      if (style === 'anthropic') return callAnthropic(opts);
+      if (style === 'gemini') return callGemini(opts);
+      return callOpenAI(opts);
+    }
+    async function callOpenAI({ apiKey, baseURL, model, messages, temperature=0.6, max_tokens=null, timeout=120000, stream=false, onToken=null }) {
       if (!apiKey) throw new Error('缺少 API Key');
       if (!baseURL) throw new Error('缺少基地址');
       const url = baseURL.replace(/\/+$/,'') + '/chat/completions';
@@ -744,6 +788,142 @@
           usage = { prompt_tokens: est(JSON.stringify(messages)), completion_tokens: est(content), total_tokens: 0, _estimated: true };
           usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
         }
+        return { content, usage };
+      } finally { clearTimeout(t); }
+    }
+    async function callAnthropic({ apiKey, baseURL, model, messages, temperature=0.6, max_tokens=null, timeout=120000, stream=false, onToken=null }) {
+      if (!apiKey) throw new Error('缺少 API Key');
+      if (!baseURL) throw new Error('缺少基地址');
+      const url = baseURL.replace(/\/+$/,'') + '/v1/messages';
+      let system = '';
+      const msgs = [];
+      for (const m of messages || []) {
+        if (m.role === 'system') { system = (system ? system + '\n\n' : '') + (m.content || ''); }
+        else if (m.role === 'user' || m.role === 'assistant') { msgs.push({ role: m.role, content: m.content || '' }); }
+        else { msgs.push({ role: 'user', content: m.content || '' }); }
+      }
+      if (!msgs.length) throw new Error('Anthropic 至少需要一条 user/assistant 消息');
+      const body = { model: model || 'claude-3-5-sonnet-20241022', messages: msgs, temperature, max_tokens: max_tokens || 4096 };
+      if (system) body.system = system;
+      if (stream) body.stream = true;
+      const ac = new AbortController();
+      const t = setTimeout(()=>ac.abort(), timeout);
+      try {
+        const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01'}, body: JSON.stringify(body), signal: ac.signal });
+        if (!res.ok) {
+          let msg = res.status+' '+res.statusText;
+          try { const j = await res.json(); if (j && j.error && j.error.message) msg += ' — ' + j.error.message; } catch(e){}
+          throw new Error('Claude 请求失败：'+msg);
+        }
+        if (!stream) {
+          const data = await res.json();
+          const content = (data.content && data.content[0] && data.content[0].text) || '';
+          const usage = data.usage ? { prompt_tokens: data.usage.input_tokens || 0, completion_tokens: data.usage.output_tokens || 0, total_tokens: (data.usage.input_tokens || 0) + (data.usage.output_tokens || 0) } : null;
+          return { content, usage };
+        }
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let content = '', usage = null, inputTokens = 0, outputTokens = 0;
+        let buf = '';
+        const flush = () => {
+          const lines = buf.split('\n');
+          buf = lines.pop() || '';
+          for (const line of lines) {
+            const s = line.trim();
+            if (!s.startsWith('event:') && !s.startsWith('data:')) continue;
+            if (s.startsWith('event:')) { /* event type ignored; next data line carries payload */ continue; }
+            const d = s.slice(5).trim();
+            if (!d) continue;
+            try {
+              const j = JSON.parse(d);
+              if (j.type === 'content_block_delta' && j.delta && j.delta.text) { content += j.delta.text; if (onToken) { try { onToken(content); } catch(e){} } }
+              else if (j.type === 'message_start' && j.message && j.message.usage) { inputTokens = j.message.usage.input_tokens || 0; outputTokens = j.message.usage.output_tokens || 0; }
+              else if (j.type === 'message_delta' && j.usage) { outputTokens = j.usage.output_tokens || outputTokens; }
+            } catch(e){}
+          }
+        };
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream:true }); flush();
+        }
+        flush();
+        usage = { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: inputTokens + outputTokens };
+        if (!usage.total_tokens) {
+          const est = (s) => Math.max(1, Math.ceil((s||'').length / 1.8));
+          usage = { prompt_tokens: est(JSON.stringify(messages)), completion_tokens: est(content), total_tokens: 0, _estimated: true };
+          usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+        }
+        return { content, usage };
+      } finally { clearTimeout(t); }
+    }
+    async function callGemini({ apiKey, baseURL, model, messages, temperature=0.6, max_tokens=null, timeout=120000, stream=false, onToken=null }) {
+      if (!apiKey) throw new Error('缺少 API Key');
+      if (!baseURL) throw new Error('缺少基地址');
+      if (!model) throw new Error('缺少模型名');
+      const base = baseURL.replace(/\/+$/,'');
+      const url = base + '/models/' + model + (stream ? ':streamGenerateContent?alt=sse' : ':generateContent');
+      const contents = [];
+      let sysText = '';
+      for (const m of messages || []) {
+        if (m.role === 'system') { sysText += (sysText ? '\n\n' : '') + (m.content || ''); continue; }
+        const role = m.role === 'assistant' ? 'model' : 'user';
+        contents.push({ role, parts: [{ text: m.content || '' }] });
+      }
+      // Gemini 不允许连续同 role，合并相邻同 role
+      const merged = [];
+      for (const c of contents) {
+        const last = merged[merged.length - 1];
+        if (last && last.role === c.role) { last.parts[0].text += '\n\n' + c.parts[0].text; }
+        else merged.push(c);
+      }
+      const body = { contents: merged, generationConfig: { temperature, maxOutputTokens: max_tokens || 2048, candidateCount: 1 } };
+      if (sysText) body.systemInstruction = { parts: [{ text: sysText }] };
+      const ac = new AbortController();
+      const t = setTimeout(()=>ac.abort(), timeout);
+      try {
+        const headers = { 'Content-Type':'application/json','x-goog-api-key':apiKey };
+        const res = await fetch(url, { method:'POST', headers, body: JSON.stringify(body), signal: ac.signal });
+        if (!res.ok) {
+          let msg = res.status+' '+res.statusText;
+          try { const j = await res.json(); if (j && j.error && j.error.message) msg += ' — ' + j.error.message; } catch(e){}
+          throw new Error('Gemini 请求失败：'+msg);
+        }
+        if (!stream) {
+          const data = await res.json();
+          const content = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text) || '';
+          return { content, usage: null };
+        }
+        // Gemini 流式：alt=sse 返回 SSE，但 data 字段是 JSON 对象（不是 JSON 字符串包裹），兼容处理
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '', content = '';
+        const flush = () => {
+          let idx;
+          while ((idx = buf.indexOf('\n\n')) >= 0) {
+            const evt = buf.slice(0, idx); buf = buf.slice(idx+2);
+            for (const line of evt.split('\n')) {
+              const s = line.trim();
+              if (!s.startsWith('data:')) continue;
+              const d = s.slice(5).trim();
+              if (!d) continue;
+              try {
+                const j = JSON.parse(d);
+                const txt = (j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts && j.candidates[0].content.parts[0] && j.candidates[0].content.parts[0].text) || '';
+                if (txt) { content += txt; if (onToken) { try { onToken(content); } catch(e){} } }
+              } catch(e){}
+            }
+          }
+        };
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream:true }); flush();
+        }
+        flush();
+        const est = (s) => Math.max(1, Math.ceil((s||'').length / 1.8));
+        const usage = { prompt_tokens: est(JSON.stringify(messages)), completion_tokens: est(content), total_tokens: 0, _estimated: true };
+        usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
         return { content, usage };
       } finally { clearTimeout(t); }
     }
@@ -1197,6 +1377,7 @@
     function fallbackMermaid(codeEl, source) {
       const pre = codeEl.closest('pre'); if (!pre) return;
       pre.className = 'md-fallback';
+      pre.style.display = 'block';
       pre.style.background = '#f5f1ea';
       pre.style.border = '1px solid #e7e2da';
       pre.style.borderRadius = '0.85rem';
@@ -1230,13 +1411,13 @@
       const nodes = Array.from(el.querySelectorAll('pre code.language-mermaid'));
       if (!nodes.length) return;
       try { mermaid.initialize({ startOnLoad:false, theme:'base', themeVariables:{ primaryColor:'#faf6f1', lineColor:'#8b9d77', fontFamily:'Times New Roman, STZhongsong, serif' }, securityLevel:'loose', suppressErrors:true }); } catch(e){}
-      const validNodes = [];
+      const validNodes = []; const sources = new WeakMap();
       for (const node of nodes) {
         const src = (node.textContent || '').trim();
         if (!src || !MERMAID_KW.test(src)) { fallbackMermaid(node, src || '(空)'); continue; }
-        // 渲染前用 mermaid.parse 严格校验语法，非法直接兜底
         try {
           await mermaid.parse(src);
+          sources.set(node, src);
           node.removeAttribute('class'); node.classList.add('mermaid'); validNodes.push(node);
         } catch(e) {
           fallbackMermaid(node, src);
@@ -1246,12 +1427,12 @@
       try {
         await mermaid.run({ nodes: validNodes });
       } catch(e) {
-        validNodes.forEach((m) => fallbackMermaid(m, (m.textContent || '').trim()));
+        validNodes.forEach((m) => fallbackMermaid(m, sources.get(m) || (m.textContent || '').trim()));
         return;
       }
-      // 渲染后仍做一次深度校验：含"Syntax error"文本、或图形数过少、或没有节点/边 → 兜底
+      // 渲染后仍做一次深度校验：失败则回退到原始源码兜底（此时节点已被 mermaid 替换为 SVG，需用保存的源码）
       validNodes.forEach((m) => {
-        if (!isMermaidRenderValid(m)) fallbackMermaid(m, (m.textContent || '').trim());
+        if (!isMermaidRenderValid(m)) fallbackMermaid(m, sources.get(m) || (m.textContent || '').trim());
       });
     }
 
@@ -1891,84 +2072,75 @@
       const box = $(targetId || 'depGraphBox'); if (!box) return;
       box.innerHTML = '<span class="inline-flex items-center gap-2 text-stone-500"><span class="spinner spinner-dark"></span>扫描依赖中…</span>';
       setTimeout(() => {
-        const re = /(?:^|[^.\w])(?:import\s+(?:[\s\S]*?from\s+)?|require\s*\(\s*|from\s+|include\s+|using\s+|use\s+)(["''])([^"'\n]+)\1/g;
-        const edges = new Set(); const nodes = new Set();
-        for (const f of p.files) {
-          const src = f.path;
-          const top = src.split('/')[0];
-          let m;
-          re.lastIndex = 0;
-          while ((m = re.exec(f.content || '')) !== null) {
-            const tgt = m[2];
-            if (/^(https?:|\/|\.)|json|css|svg|png|jpg|jpeg|gif|woff|ttf|wasm$/i.test(tgt)) continue;
-            const tmod = tgt.replace(/^\.\/|^\.\.\//,'').split('/')[0] || tgt;
-            if (top && tmod && top !== tmod) { edges.add(top+' --> '+tmod); nodes.add(top); nodes.add(tmod); }
-          }
-        }
-        if (!edges.size) {
-          // 兜底：用目录结构生成模块/文件簇图
-          const dirNodes = new Set(); const fileNodes = []; const dEdges = [];
-          const topDirs = new Set();
+        try {
+          const re = /(?:^|[^.\w])(?:import\s+(?:[\s\S]*?from\s+)?|require\s*\(\s*|from\s+|include\s+|using\s+|use\s+)(["''])([^"'\n]+)\1/g;
+          const edges = new Set(); const nodes = new Set();
           for (const f of p.files) {
-            const parts = f.path.split('/');
-            if (parts.length > 1) topDirs.add(parts[0]);
-          }
-          const dirFiles = new Map();
-          for (const f of p.files) {
-            const parts = f.path.split('/');
-            if (parts.length <= 1) continue;
-            const top = parts[0], dir = parts.slice(0, -1).join('/');
-            if (!dirFiles.has(dir)) dirFiles.set(dir, []);
-            dirFiles.get(dir).push(f.path);
-          }
-          const sortedDirs = [...dirFiles.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, 18);
-          for (const [dir, files] of sortedDirs) {
-            const cleanDir = dir.replace(/[^A-Za-z0-9_]/g, '_');
-            dirNodes.add('  ' + cleanDir + '["' + esc(dir) + '"]');
-            for (const f of files.slice(0, 5)) {
-              const cleanF = f.replace(/[^A-Za-z0-9_]/g, '_');
-              fileNodes.push('  ' + cleanF + '["' + esc(f.split('/').pop()) + '"]');
-              dEdges.push('  ' + cleanDir + ' --> ' + cleanF);
+            const src = f.path;
+            const top = src.split('/')[0];
+            let m;
+            re.lastIndex = 0;
+            while ((m = re.exec(f.content || '')) !== null) {
+              const tgt = m[2];
+              if (/^(https?:|\/|\.)|json|css|svg|png|jpg|jpeg|gif|woff|ttf|wasm$/i.test(tgt)) continue;
+              const tmod = tgt.replace(/^\.\/|^\.\.\//,'').split('/')[0] || tgt;
+              if (top && tmod && top !== tmod) { edges.add(top+' --> '+tmod); nodes.add(top); nodes.add(tmod); }
             }
           }
-          // 顶层目录间连线（公共父目录）
-          const tops = [...topDirs].slice(0, 8);
-          for (let i = 0; i < tops.length; i++) {
-            for (let j = i + 1; j < tops.length; j++) {
-              dEdges.push('  ' + tops[i].replace(/[^A-Za-z0-9_]/g, '_') + ' -.同级.-> ' + tops[j].replace(/[^A-Za-z0-9_]/g, '_'));
+          const cleanN = (n) => n.replace(/[^A-Za-z0-9_]/g, '_');
+          let lines = '', title = '';
+          if (!edges.size) {
+            // 兜底：用目录结构生成模块/文件簇图
+            const dirNodes = new Set(); const fileNodes = []; const dEdges = [];
+            const topDirs = new Set();
+            for (const f of p.files) { const parts = f.path.split('/'); if (parts.length > 1) topDirs.add(parts[0]); }
+            const dirFiles = new Map();
+            for (const f of p.files) {
+              const parts = f.path.split('/');
+              if (parts.length <= 1) continue;
+              const dir = parts.slice(0, -1).join('/');
+              if (!dirFiles.has(dir)) dirFiles.set(dir, []);
+              dirFiles.get(dir).push(f.path);
             }
-          }
-          let lines;
-          if (!dirNodes.size) {
-            // 所有文件在根目录：生成 root -> files 星型图
-            const rootFiles = p.files.slice(0, 40).map((f) => f.path);
-            const rootId = 'root_repo';
-            const fileDefs = rootFiles.map((f) => '  ' + clean(f) + '["' + esc(f) + '"]').join('\n');
-            const rootEdges = rootFiles.map((f) => '  ' + rootId + ' --> ' + clean(f)).join('\n');
-            lines = 'flowchart TD\n  ' + rootId + '(("' + esc(p.name) + '"))\n' + fileDefs + '\n' + rootEdges;
+            const sortedDirs = [...dirFiles.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, 18);
+            for (const [dir, files] of sortedDirs) {
+              const cleanDir = cleanN(dir);
+              dirNodes.add('  ' + cleanDir + '["' + esc(dir) + '"]');
+              for (const f of files.slice(0, 5)) {
+                const cleanF = cleanN(f);
+                fileNodes.push('  ' + cleanF + '["' + esc(f.split('/').pop()) + '"]');
+                dEdges.push('  ' + cleanDir + ' --> ' + cleanF);
+              }
+            }
+            const tops = [...topDirs].slice(0, 8);
+            for (let i = 0; i < tops.length; i++) {
+              for (let j = i + 1; j < tops.length; j++) {
+                dEdges.push('  ' + cleanN(tops[i]) + ' -.同级.-> ' + cleanN(tops[j]));
+              }
+            }
+            if (!dirNodes.size) {
+              const rootFiles = p.files.slice(0, 40).map((f) => f.path);
+              const rootId = 'root_repo';
+              const fileDefs = rootFiles.map((f) => '  ' + cleanN(f) + '["' + esc(f) + '"]').join('\n');
+              const rootEdges = rootFiles.map((f) => '  ' + rootId + ' --> ' + cleanN(f)).join('\n');
+              lines = 'flowchart TD\n  ' + rootId + '(("' + esc(p.name) + '"))\n' + fileDefs + '\n' + rootEdges;
+            } else {
+              lines = 'flowchart TD\n' + [...dirNodes].join('\n') + '\n' + fileNodes.join('\n') + '\n' + dEdges.slice(0, 120).join('\n');
+            }
+            title = '未识别到显式 import/require，已基于目录结构生成模块聚类图：';
           } else {
-            lines = 'flowchart TD\n' + [...dirNodes].join('\n') + '\n' + fileNodes.join('\n') + '\n' + dEdges.slice(0, 120).join('\n');
+            const nodeList = [...new Set([...nodes].slice(0, 60))];
+            const edgeLines = [...edges].slice(0, 200).map((e) => {
+              const parts = e.split(' --> ');
+              if (parts.length !== 2) return '';
+              return '  ' + cleanN(parts[0]) + ' --> ' + cleanN(parts[1]);
+            }).filter(Boolean);
+            lines = 'flowchart LR\n' + nodeList.map((n) => '  ' + cleanN(n) + '["' + esc(n) + '"]').join('\n') + '\n' + edgeLines.join('\n');
           }
-          box.innerHTML = '<p class="text-xs text-stone-500 mb-2">未识别到显式 import/require，已基于目录结构生成模块聚类图：</p><pre class="md-fallback" style="max-height:440px;overflow:auto"><code class="language-mermaid">' + esc(lines) + '</code></pre>';
-          const code = box.querySelector('code.language-mermaid');
-          if (code && window.mermaid) { const wrap = document.createElement('div'); box.innerHTML = ''; box.appendChild(wrap); wrap.className = 'md'; const ce = document.createElement('pre'); ce.style.display = 'none'; const cc = document.createElement('code'); cc.className = 'language-mermaid'; cc.textContent = lines; ce.appendChild(cc); wrap.appendChild(ce); renderMermaid(wrap); }
-          return;
-        }
-        const nodeList = [...new Set([...nodes].slice(0, 60))];
-        const cleanN = (n) => n.replace(/[^A-Za-z0-9_]/g, '_');
-        const edgeLines = [...edges].slice(0, 200).map((e) => {
-          const parts = e.split(' --> ');
-          if (parts.length !== 2) return '';
-          return '  ' + cleanN(parts[0]) + ' --> ' + cleanN(parts[1]);
-        }).filter(Boolean);
-        const lines = 'flowchart LR\n' + nodeList.map((n) => '  ' + cleanN(n) + '["' + esc(n) + '"]').join('\n') + '\n' + edgeLines.join('\n');
-        box.innerHTML = '<pre class="md-fallback"><code class="language-mermaid">'+esc(lines)+'</code></pre>';
-        const code = box.querySelector('code.language-mermaid');
-        if (code && window.mermaid) {
-          const wrap = document.createElement('div');
-          box.innerHTML = ''; box.appendChild(wrap); wrap.className = 'md';
-          const ce = document.createElement('pre'); ce.style.display='none'; const cc = document.createElement('code'); cc.className='language-mermaid'; cc.textContent = lines; ce.appendChild(cc); wrap.appendChild(ce);
-          renderMermaid(wrap);
+          box.innerHTML = (title ? '<p class="text-xs text-stone-500 mb-2">' + esc(title) + '</p>' : '') + '<pre class="md-fallback"><code class="language-mermaid">' + esc(lines) + '</code></pre>';
+          if (window.mermaid) renderMermaid(box);
+        } catch (e) {
+          box.innerHTML = '<p class="text-sm text-red-700 font-sans">❌ 生成关系图失败：' + esc(e.message) + '</p>';
         }
       }, 30);
     }
@@ -2251,6 +2423,7 @@
       const hasReal = p.graph.calls.length > 0 || p.graph.imports.length > 0;
       box.innerHTML = '<span class="inline-flex items-center gap-2 text-stone-500"><span class="spinner spinner-dark"></span>构建知识图谱中…</span>';
       setTimeout(() => {
+        try {
         const clean = (s) => s.replace(/[^A-Za-z0-9_]/g, '_');
         let nodes = [], nodeSet, lines = '', title = '';
         if (hasReal) {
@@ -2328,6 +2501,9 @@
         }
         box.innerHTML = (title ? '<p class="text-xs text-stone-500 mb-2">' + esc(title) + '</p>' : '') + '<pre class="md-fallback" style="max-height:440px;overflow:auto"><code class="language-mermaid">' + esc(lines) + '</code></pre>';
         if (window.mermaid) renderMermaid(box);
+        } catch (e) {
+          box.innerHTML = '<p class="text-sm text-red-700 font-sans">❌ 生成知识图谱失败：' + esc(e.message) + '</p>';
+        }
       }, 30);
     }
     // ---- 引用溯源（DeepWiki 精髓） ----
@@ -2643,10 +2819,28 @@
     function scrollToHead(id) { const el = document.getElementById(id); if (el) { const y = el.getBoundingClientRect().top + window.scrollY - 90; window.scrollTo({ top: y, behavior: 'smooth' }); } }
 
     // ---------- Embedding（深度向量检索，无后端） ----------
-    async function callEmbed({ apiKey, baseURL, model, inputs, timeout=60000 }) {
+    async function callEmbed({ apiKey, baseURL, model, inputs, timeout=60000, apiStyle }) {
       if (!apiKey) throw new Error('缺少 API Key');
       if (!baseURL) throw new Error('缺少基地址');
       if (!model) throw new Error('缺少 Embedding 模型');
+      const style = apiStyle || getConfig().apiStyle || 'openai';
+      if (style === 'anthropic') throw new Error('Anthropic Claude 原生 API 暂不支持 Embedding。如需向量检索，请另配一个 OpenAI 兼容的 Embedding 端点，或在检索设置里切换为「轻量 TF-IDF」。');
+      if (style === 'gemini') {
+        const base = baseURL.replace(/\/+$/,'');
+        const url = base + '/models/' + model + ':embedContent';
+        const ac = new AbortController();
+        const t = setTimeout(()=>ac.abort(), timeout);
+        try {
+          const out = [];
+          for (const text of inputs) {
+            const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json','x-goog-api-key':apiKey}, body: JSON.stringify({ content:{ parts:[{ text }] } }), signal: ac.signal });
+            if (!res.ok) { let msg = res.status + ' ' + res.statusText; try { const j = await res.json(); if (j && j.error && j.error.message) msg += ' — ' + j.error.message; } catch(e){} throw new Error('Gemini Embedding 失败：' + msg); }
+            const data = await res.json();
+            out.push((data.embedding && data.embedding.values) || []);
+          }
+          return out;
+        } finally { clearTimeout(t); }
+      }
       const url = baseURL.replace(/\/+$/,'') + '/embeddings';
       const ac = new AbortController();
       const t = setTimeout(()=>ac.abort(), timeout);
@@ -2715,6 +2909,7 @@
         if (appSettings.baseURL) $('baseURL').value = appSettings.baseURL;
         if (appSettings.model) $('model').value = appSettings.model;
         if (appSettings.ghToken) $('ghToken').value = appSettings.ghToken;
+        if ($('apiStyle')) { $('apiStyle').value = appSettings.apiStyle || 'openai'; updateApiStyleNote(); }
         if ($('embedModel')) $('embedModel').value = appSettings.embedModel || '';
         if ($('rewriteQuery')) $('rewriteQuery').checked = appSettings.rewriteQuery !== false;
         const rm = document.querySelector('input[name="retrievalMode"][value="'+appSettings.retrievalMode+'"]');
