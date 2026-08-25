@@ -15,7 +15,7 @@
 
 ## 使用
 
-直接打开 [GitHub Pages 站点](https://hyhyhyyy.github.io/learn-your-project/) 即可：
+直接打开 [GitHub Pages 站点](#) 即可：
 
 1. 「模型配置」填写 API Key / 基地址 / 模型 → 点击「验证配置」。
 2. 「加载仓库」粘贴 `https://github.com/owner/repo` → 点击「加载仓库」。
