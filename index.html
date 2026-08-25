@@ -1221,13 +1221,22 @@
       // 依赖清单（解析 manifests）
       const deps = parseDeps(p.files);
       const depsHtml = deps.length ? deps.map((d)=>'<span class="ov-chip">'+esc(d.name)+(d.ver?(' '+esc(d.ver)):'')+'</span>').join('') : '<span class="toc-empty">未识别到依赖清单（package.json / requirements.txt / go.mod / Cargo.toml 等）</span>';
-      // 架构健康度（基于已构建的 p.graph）
+      // 架构健康度（基于已构建的 p.graph，若关系为空则退化为结构概况）
       let healthInner = '<span class="text-sm text-stone-400">仓库关系分析将自动生成。</span>';
       if (p.graph) {
         const cyc = (p.graph.dirCycles||[]).concat(p.graph.fileCycles||[]);
         let h = '';
         if (p.graph.topKey && p.graph.topKey.length) {
           h += '<div class="mb-2"><div class="text-xs text-stone-500 mb-1">📌 关键模块（被依赖最多 · 修改需谨慎）</div>' + p.graph.topKey.slice(0,5).map((k)=>'<span class="ov-chip">'+esc(k.file.split('/').pop())+' <span style="color:#a8a29e">·被'+k.fanIn+'依赖</span></span>').join('') + '</div>';
+        } else {
+          // 退化为结构概况：最大目录、最深路径、符号数量
+          const dirCount = {};
+          for (const f of p.tree) { const seg = f.split('/')[0]; if (f.includes('/')) dirCount[seg] = (dirCount[seg]||0)+1; }
+          const topDir = Object.entries(dirCount).sort((a,b)=>b[1]-a[1])[0];
+          const maxDepth = Math.max(...p.tree.map((f)=>f.split('/').length));
+          const symN = p.graph.symbols ? p.graph.symbols.length : 0;
+          h += '<div class="mb-2"><div class="text-xs text-stone-500 mb-1">📊 结构概况（关系边不足时 fallback）</div>'
+            + '<div class="text-xs text-stone-600">文件总数：' + p.tree.length + ' · 已抓取：' + p.files.length + ' · 符号数：' + symN + ' · 目录最大深度：' + maxDepth + (topDir ? ' · 最大目录：<span class="ov-chip">' + esc(topDir[0]) + ' (' + topDir[1] + ')</span>' : '') + '</div></div>';
         }
         if (cyc.length) {
           h += '<div class="mb-1"><div class="text-xs" style="color:#b91c1c">⚠ 循环依赖（'+cyc.length+' 处，建议解耦）</div>' + cyc.slice(0,4).map((c)=>'<div class="text-xs mt-1" style="color:#b91c1c">↻ '+esc(c.join(' → '))+'</div>').join('') + '</div>';
@@ -1283,8 +1292,63 @@
             if (top && tmod && top !== tmod) { edges.add(top+' --> '+tmod); nodes.add(top); nodes.add(tmod); }
           }
         }
-        if (!edges.size) { box.innerHTML = '<span class="toc-empty">未在已加载文件中识别到跨模块 import/require 关系（可能文件未全部抓取，或项目较小）。</span>'; return; }
-        const lines = 'flowchart LR\n' + [...new Set([...nodes].slice(0,60))].map((n)=>'  '+esc(n)).join('\n') + '\n' + [...edges].slice(0,200).map((e)=>'  '+e).join('\n');
+        if (!edges.size) {
+          // 兜底：用目录结构生成模块/文件簇图
+          const dirNodes = new Set(); const fileNodes = []; const dEdges = [];
+          const topDirs = new Set();
+          for (const f of p.files) {
+            const parts = f.path.split('/');
+            if (parts.length > 1) topDirs.add(parts[0]);
+          }
+          const dirFiles = new Map();
+          for (const f of p.files) {
+            const parts = f.path.split('/');
+            if (parts.length <= 1) continue;
+            const top = parts[0], dir = parts.slice(0, -1).join('/');
+            if (!dirFiles.has(dir)) dirFiles.set(dir, []);
+            dirFiles.get(dir).push(f.path);
+          }
+          const sortedDirs = [...dirFiles.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, 18);
+          for (const [dir, files] of sortedDirs) {
+            const cleanDir = dir.replace(/[^A-Za-z0-9_]/g, '_');
+            dirNodes.add('  ' + cleanDir + '["' + esc(dir) + '"]');
+            for (const f of files.slice(0, 5)) {
+              const cleanF = f.replace(/[^A-Za-z0-9_]/g, '_');
+              fileNodes.push('  ' + cleanF + '["' + esc(f.split('/').pop()) + '"]');
+              dEdges.push('  ' + cleanDir + ' --> ' + cleanF);
+            }
+          }
+          // 顶层目录间连线（公共父目录）
+          const tops = [...topDirs].slice(0, 8);
+          for (let i = 0; i < tops.length; i++) {
+            for (let j = i + 1; j < tops.length; j++) {
+              dEdges.push('  ' + tops[i].replace(/[^A-Za-z0-9_]/g, '_') + ' -.同级.-> ' + tops[j].replace(/[^A-Za-z0-9_]/g, '_'));
+            }
+          }
+          let lines;
+          if (!dirNodes.size) {
+            // 所有文件在根目录：生成 root -> files 星型图
+            const rootFiles = p.files.slice(0, 40).map((f) => f.path);
+            const rootId = 'root_repo';
+            const fileDefs = rootFiles.map((f) => '  ' + clean(f) + '["' + esc(f) + '"]').join('\n');
+            const rootEdges = rootFiles.map((f) => '  ' + rootId + ' --> ' + clean(f)).join('\n');
+            lines = 'flowchart TD\n  ' + rootId + '(("' + esc(p.name) + '"))\n' + fileDefs + '\n' + rootEdges;
+          } else {
+            lines = 'flowchart TD\n' + [...dirNodes].join('\n') + '\n' + fileNodes.join('\n') + '\n' + dEdges.slice(0, 120).join('\n');
+          }
+          box.innerHTML = '<p class="text-xs text-stone-500 mb-2">未识别到显式 import/require，已基于目录结构生成模块聚类图：</p><pre class="md-fallback" style="max-height:440px;overflow:auto"><code class="language-mermaid">' + esc(lines) + '</code></pre>';
+          const code = box.querySelector('code.language-mermaid');
+          if (code && window.mermaid) { const wrap = document.createElement('div'); box.innerHTML = ''; box.appendChild(wrap); wrap.className = 'md'; const ce = document.createElement('pre'); ce.style.display = 'none'; const cc = document.createElement('code'); cc.className = 'language-mermaid'; cc.textContent = lines; ce.appendChild(cc); wrap.appendChild(ce); renderMermaid(wrap); }
+          return;
+        }
+        const nodeList = [...new Set([...nodes].slice(0, 60))];
+        const cleanN = (n) => n.replace(/[^A-Za-z0-9_]/g, '_');
+        const edgeLines = [...edges].slice(0, 200).map((e) => {
+          const parts = e.split(' --> ');
+          if (parts.length !== 2) return '';
+          return '  ' + cleanN(parts[0]) + ' --> ' + cleanN(parts[1]);
+        }).filter(Boolean);
+        const lines = 'flowchart LR\n' + nodeList.map((n) => '  ' + cleanN(n) + '["' + esc(n) + '"]').join('\n') + '\n' + edgeLines.join('\n');
         box.innerHTML = '<pre class="md-fallback"><code class="language-mermaid">'+esc(lines)+'</code></pre>';
         const code = box.querySelector('code.language-mermaid');
         if (code && window.mermaid) {
@@ -1399,7 +1463,80 @@
       // 循环依赖检测：目录级 import 图 + 文件级 call 图（DFS 环检测）
       const dirCycles = findCycles(imports.map((i) => ({ from: i.from, to: i.to })));
       const fileCycles = findCycles(calls.map((c) => ({ from: c.from, to: c.to })));
-      p.graph = { symbols: symbols.slice(0, 600), calls: calls.slice(0, 800), imports, nameToFile, fanIn, fanOut, topKey, topCoupled, dirCycles, fileCycles, builtAt: Date.now() };
+      const softEdges = inferSoftRelations(p, symbols, imports, calls);
+      p.graph = { symbols: symbols.slice(0, 600), calls: calls.slice(0, 800), imports, nameToFile, fanIn, fanOut, topKey, topCoupled, dirCycles, fileCycles, softEdges, builtAt: Date.now() };
+    }
+    // 软关系推断：当真实 import/call 不足时，基于目录结构、文件名语义、入口/文档生成兜底边
+    function inferSoftRelations(p, symbols, imports, calls) {
+      const edges = [];
+      const edgeKey = (a, b, t) => a + '\x00' + b + '\x00' + t;
+      const seen = new Set();
+      const add = (from, to, type, reason) => {
+        if (!from || !to || from === to) return;
+        if (from.split('/').length === 1 && to.split('/').length === 1 && from === to) return;
+        const k1 = edgeKey(from, to, type), k2 = edgeKey(to, from, type);
+        if (seen.has(k1) || seen.has(k2)) return;
+        seen.add(k1); seen.add(k2);
+        edges.push({ from, to, type, reason });
+      };
+      const codeFiles = p.files.filter((f) => !/\.(md|txt|rst|json|yaml|yml|toml|ini|cfg|log|gitignore|png|jpg|jpeg|gif|svg|woff|ttf|wasm|ico)$/.test(f.path.split('/').pop().toLowerCase()));
+      const dirFiles = new Map();
+      for (const f of codeFiles) {
+        const dir = f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/')) : '(root)';
+        if (!dirFiles.has(dir)) dirFiles.set(dir, []);
+        dirFiles.get(dir).push(f.path);
+      }
+      // 1) 同目录文件簇
+      for (const [dir, files] of dirFiles) {
+        const slice = files.slice(0, 15);
+        for (let i = 0; i < slice.length; i++) {
+          for (let j = i + 1; j < slice.length; j++) {
+            add(slice[i], slice[j], 'SOFT_CO_LOCATED', '同目录：' + dir);
+          }
+        }
+      }
+      // 2) 入口文件向同目录其他代码文件推断使用关系
+      const entryNames = /\b(index|main|app|server|cli|core|start|entry|root|boot)\b/i;
+      const entries = codeFiles.filter((f) => entryNames.test(f.path.split('/').pop().split('.')[0].toLowerCase())).slice(0, 8);
+      for (const e of entries) {
+        const dir = e.path.includes('/') ? e.path.slice(0, e.path.lastIndexOf('/')) : '(root)';
+        const siblings = (dirFiles.get(dir) || []).filter((x) => x !== e.path).slice(0, 12);
+        for (const s of siblings) add(e.path, s, 'SOFT_ENTRY_USE', '入口文件可能引用');
+      }
+      // 3) README/文档向代码文件链接
+      const docs = p.files.filter((f) => /\b(readme|readme\.md|readme\.rst|docs|guide|intro|overview)\b/i.test(f.path.split('/').pop())).slice(0, 3);
+      if (docs.length) {
+        const docPaths = docs.map((d) => d.path);
+        for (const f of codeFiles.slice(0, 60)) {
+          for (const d of docPaths) add(d, f, 'SOFT_DOC_LINK', '文档相关');
+        }
+      }
+      // 4) 文件名语义相似（共同前缀/词干）
+      const stems = codeFiles.map((f) => {
+        const base = f.path.split('/').pop().split('.')[0].toLowerCase();
+        return { path: f.path, base };
+      }).filter((x) => x.base.length >= 3);
+      for (let i = 0; i < stems.length; i++) {
+        for (let j = i + 1; j < stems.length; j++) {
+          const a = stems[i].base, b = stems[j].base;
+          // 共同前缀或后缀 >=4，或互相包含
+          if (a === b) continue;
+          let common = 0;
+          for (let k = 0; k < Math.min(a.length, b.length); k++) if (a[k] === b[k]) common++; else break;
+          let commonSuf = 0;
+          for (let k = 0; k < Math.min(a.length, b.length); k++) if (a[a.length - 1 - k] === b[b.length - 1 - k]) commonSuf++; else break;
+          if (common >= 4 || commonSuf >= 4 || a.includes(b) || b.includes(a)) {
+            add(stems[i].path, stems[j].path, 'SOFT_NAMING', '命名语义相近');
+          }
+        }
+      }
+      // 5) 文件 → 直接父目录（目录包含关系）
+      for (const f of codeFiles) {
+        if (!f.path.includes('/')) continue;
+        const dir = f.path.slice(0, f.path.lastIndexOf('/'));
+        add(dir, f.path, 'SOFT_DIR', '目录包含');
+      }
+      return edges.slice(0, 400);
     }
     // 有向图 DFS 环检测：返回若干环（路径数组）。节点过多时跳过，避免爆栈。
     function findCycles(edges) {
@@ -1424,7 +1561,7 @@
     }
     // 架构健康度摘要文本（供报告显示 + 报告 prompt 注入）
     function getHealthSummary() {
-      const g = currentProject && currentProject.graph; if (!g) return '';
+      const p = currentProject; const g = p && p.graph; if (!g) return '';
       const lines = [];
       if (g.topKey && g.topKey.length) {
         lines.push('关键模块（被依赖最多 / 最关键）：');
@@ -1433,6 +1570,16 @@
       if (g.topCoupled && g.topCoupled.length) {
         lines.push('耦合热点（向外依赖最多）：');
         for (const c of g.topCoupled.slice(0, 3)) lines.push('- ' + c.file + '（向外依赖 ' + c.fanOut + ' 处）');
+      }
+      if ((!g.topKey || !g.topKey.length) && (!g.topCoupled || !g.topCoupled.length)) {
+        lines.push('结构概况（未识别到足够的 import/call 关系，退化为目录/符号统计）：');
+        const dirCount = {};
+        for (const f of p.tree) { const seg = f.split('/')[0]; if (f.includes('/')) dirCount[seg] = (dirCount[seg]||0)+1; }
+        const topDir = Object.entries(dirCount).sort((a,b)=>b[1]-a[1])[0];
+        const maxDepth = Math.max(...p.tree.map((f)=>f.split('/').length));
+        lines.push('- 文件总数：' + p.tree.length + '，已抓取内容：' + p.files.length);
+        lines.push('- 识别到的符号数：' + (g.symbols ? g.symbols.length : 0));
+        lines.push('- 目录最大深度：' + maxDepth + (topDir ? '，最大目录：' + topDir[0] + '（' + topDir[1] + ' 个文件）' : ''));
       }
       const cyc = (g.dirCycles || []).concat(g.fileCycles || []);
       if (cyc.length) {
@@ -1487,24 +1634,87 @@
       const p = currentProject; if (!p) return;
       const box = $('codeGraphBox'); if (!box) return;
       if (!p.graph) buildCodeGraph();
-      if (!p.graph || (!p.graph.calls.length && !p.graph.imports.length)) { box.innerHTML = '<span class="toc-empty">未在已加载文件中识别到足够的调用/导入关系（样本较小或语言暂不支持）。</span>'; return; }
+      if (!p.graph) { box.innerHTML = '<span class="toc-empty">仓库关系尚未构建。</span>'; return; }
+      const hasReal = p.graph.calls.length > 0 || p.graph.imports.length > 0;
       box.innerHTML = '<span class="inline-flex items-center gap-2 text-stone-500"><span class="spinner spinner-dark"></span>构建知识图谱中…</span>';
       setTimeout(() => {
-        const deg = new Map(); const bump = (f) => deg.set(f, (deg.get(f) || 0) + 1);
-        for (const c of p.graph.calls) { bump(c.from); bump(c.to); }
-        for (const i of p.graph.imports) { bump(i.from); bump(i.to); }
-        let nodes = [...deg.entries()].sort((a, b) => b[1] - a[1]).slice(0, 26).map((x) => x[0]);
-        if (!nodes.length) nodes = [...new Set(p.graph.calls.map((c) => c.from).concat(p.graph.calls.map((c) => c.to)))].slice(0, 26);
-        const nodeSet = new Set(nodes);
         const clean = (s) => s.replace(/[^A-Za-z0-9_]/g, '_');
-        const nodeDefs = nodes.map((n) => '  ' + clean(n) + '["' + esc(n.split('/').pop()) + '"]').join('\n');
-        const edges = [];
-        for (const c of p.graph.calls) if (nodeSet.has(c.from) && nodeSet.has(c.to) && c.from !== c.to) edges.push('  ' + clean(c.from) + ' -->|调用| ' + clean(c.to));
-        for (const i of p.graph.imports) if (nodeSet.has(i.from) && nodeSet.has(i.to) && i.from !== i.to) edges.push('  ' + clean(i.from) + ' -.导入.-> ' + clean(i.to));
-        const lines = 'flowchart LR\n' + nodeDefs + '\n' + edges.slice(0, 120).join('\n');
-        box.innerHTML = '<pre class="md-fallback" style="max-height:440px;overflow:auto"><code class="language-mermaid">' + esc(lines) + '</code></pre>';
-        const code = box.querySelector('code.language-mermaid');
-        if (code && window.mermaid) { const wrap = document.createElement('div'); box.innerHTML = ''; box.appendChild(wrap); wrap.className = 'md'; renderMermaid(wrap); }
+        let nodes = [], nodeSet, lines = '', title = '';
+        if (hasReal) {
+          title = '真实调用/导入关系';
+          const deg = new Map(); const bump = (f) => deg.set(f, (deg.get(f) || 0) + 1);
+          for (const c of p.graph.calls) { bump(c.from); bump(c.to); }
+          for (const i of p.graph.imports) { bump(i.from); bump(i.to); }
+          nodes = [...deg.entries()].sort((a, b) => b[1] - a[1]).slice(0, 26).map((x) => x[0]);
+          if (!nodes.length) nodes = [...new Set(p.graph.calls.map((c) => c.from).concat(p.graph.calls.map((c) => c.to)))].slice(0, 26);
+          nodeSet = new Set(nodes);
+          const nodeDefs = nodes.map((n) => '  ' + clean(n) + '["' + esc(n.split('/').pop()) + '"]').join('\n');
+          const edges = [];
+          for (const c of p.graph.calls) if (nodeSet.has(c.from) && nodeSet.has(c.to) && c.from !== c.to) edges.push('  ' + clean(c.from) + ' -->|调用| ' + clean(c.to));
+          for (const i of p.graph.imports) if (nodeSet.has(i.from) && nodeSet.has(i.to) && i.from !== i.to) edges.push('  ' + clean(i.from) + ' -.导入.-> ' + clean(i.to));
+          lines = 'flowchart LR\n' + nodeDefs + '\n' + edges.slice(0, 120).join('\n');
+        } else if (p.graph.softEdges && p.graph.softEdges.length) {
+          title = '未识别到显式调用/导入，已基于目录结构、文件名语义与入口推断生成软关系';
+          const deg = new Map(); const bump = (f) => deg.set(f, (deg.get(f) || 0) + 1);
+          for (const e of p.graph.softEdges) { bump(e.from); bump(e.to); }
+          nodes = [...deg.entries()].sort((a, b) => b[1] - a[1]).slice(0, 32).map((x) => x[0]);
+          nodeSet = new Set(nodes);
+          const nodeDefs = nodes.map((n) => {
+            const label = n.includes('/') ? n.split('/').pop() : n;
+            const shape = n.includes('/') ? '["' + esc(label) + '"]' : '(("' + esc(label) + '"))';
+            return '  ' + clean(n) + shape;
+          }).join('\n');
+          const typeStyle = { SOFT_CO_LOCATED: '==>|同目录|', SOFT_ENTRY_USE: '-->|入口推断|', SOFT_DOC_LINK: '-.->|文档|', SOFT_NAMING: '==>|语义相近|', SOFT_DIR: '-->|目录包含|' };
+          const edges = [];
+          for (const e of p.graph.softEdges) {
+            if (!nodeSet.has(e.from) || !nodeSet.has(e.to) || e.from === e.to) continue;
+            const arrow = typeStyle[e.type] || '-->';
+            edges.push('  ' + clean(e.from) + ' ' + arrow + ' ' + clean(e.to));
+          }
+          lines = 'flowchart LR\n' + nodeDefs + '\n' + edges.slice(0, 140).join('\n');
+        } else if (p.graph.symbols && p.graph.symbols.length) {
+          // 最终兜底：文件-符号二分图
+          title = '未识别到关系，已生成文件-定义符号清单';
+          const fileSyms = new Map();
+          for (const s of p.graph.symbols.slice(0, 120)) {
+            if (!fileSyms.has(s.file)) fileSyms.set(s.file, []);
+            fileSyms.get(s.file).push(s.name);
+          }
+          const files = [...fileSyms.keys()].slice(0, 30);
+          const nodeDefs = files.map((f) => '  ' + clean(f) + '["' + esc(f.split('/').pop()) + '"]').join('\n');
+          const symNodes = [];
+          const edges = [];
+          for (const f of files) {
+            for (const name of fileSyms.get(f).slice(0, 5)) {
+              const sn = clean(f + '_' + name);
+              symNodes.push('  ' + sn + '(("' + esc(name) + '"))');
+              edges.push('  ' + clean(f) + ' --> ' + sn);
+            }
+          }
+          lines = 'flowchart TD\n' + nodeDefs + '\n' + symNodes.join('\n') + '\n' + edges.slice(0, 160).join('\n');
+        } else {
+          // 最终最终兜底：目录聚类图
+          title = '未识别到符号与关系，已基于目录结构生成聚类图';
+          const dirFiles = new Map();
+          for (const f of p.tree) {
+            const dir = f.includes('/') ? f.slice(0, f.lastIndexOf('/')) : '(root)';
+            if (!dirFiles.has(dir)) dirFiles.set(dir, []);
+            dirFiles.get(dir).push(f);
+          }
+          const sortedDirs = [...dirFiles.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, 24);
+          let nodeDefs = sortedDirs.map(([d]) => '  ' + clean(d) + '["' + esc(d) + '"]').join('\n');
+          const edges = [];
+          for (const [d, files] of sortedDirs) {
+            for (const f of files.slice(0, 4)) {
+              const cf = clean(f);
+              nodeDefs += (nodeDefs ? '\n' : '') + '  ' + cf + '["' + esc(f.split('/').pop()) + '"]';
+              edges.push('  ' + clean(d) + ' --> ' + cf);
+            }
+          }
+          lines = 'flowchart TD\n' + nodeDefs + '\n' + edges.slice(0, 120).join('\n');
+        }
+        box.innerHTML = (title ? '<p class="text-xs text-stone-500 mb-2">' + esc(title) + '</p>' : '') + '<pre class="md-fallback" style="max-height:440px;overflow:auto"><code class="language-mermaid">' + esc(lines) + '</code></pre>';
+        if (window.mermaid) renderMermaid(box);
       }, 30);
     }
     // ---- 引用溯源（DeepWiki 精髓） ----
@@ -1595,7 +1805,7 @@
       const cfg = getConfig(); const p = currentProject; if (!p) return;
       const box = $('archBox'); if (!box) return;
       if (!cfg.apiKey || !cfg.baseURL) { box.innerHTML = '<span class="toc-empty">请先在「模型配置」填写 API Key 与基地址。</span>'; return; }
-      if (p.archDiagram) { box.innerHTML = '<pre class="md-fallback" style="max-height:440px;overflow:auto"><code class="language-mermaid">' + esc(p.archDiagram) + '</code></pre>'; if (window.mermaid) { const w = document.createElement('div'); box.innerHTML = ''; box.appendChild(w); w.className = 'md'; renderMermaid(w); } return; }
+      if (p.archDiagram) { box.innerHTML = '<pre class="md-fallback" style="max-height:440px;overflow:auto"><code class="language-mermaid">' + esc(p.archDiagram) + '</code></pre>'; if (window.mermaid) renderMermaid(box); return; }
       box.innerHTML = '<span class="inline-flex items-center gap-2 text-stone-500"><span class="spinner spinner-dark"></span>大模型正在梳理架构…</span>';
       try {
         const struct = p.tree.slice(0, 220).join('\n');
@@ -1606,7 +1816,7 @@
         if (!mermaid) { box.innerHTML = '<span class="toc-empty">大模型未返回有效架构图（可重试）。</span>'; return; }
         p.archDiagram = mermaid;
         box.innerHTML = '<pre class="md-fallback" style="max-height:440px;overflow:auto"><code class="language-mermaid">' + esc(mermaid) + '</code></pre>';
-        if (window.mermaid) { const w = document.createElement('div'); box.innerHTML = ''; box.appendChild(w); w.className = 'md'; renderMermaid(w); }
+        if (window.mermaid) renderMermaid(box);
       } catch (e) { box.innerHTML = '<span class="toc-empty">生成失败：' + esc(e.message || String(e)) + '</span>'; }
     }
     async function generateCodeMap() {
