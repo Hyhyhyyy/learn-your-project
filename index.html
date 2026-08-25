@@ -167,13 +167,24 @@
           <div class="space-y-2 mb-6">
             <label class="block font-sans text-sm text-stone-700">服务商预设</label>
             <select id="provider" class="w-full md:w-2/3 px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300">
-              <option value="custom">自定义 / 其他</option>
+              <option value="custom">自定义 / 其他（任意 OpenAI 兼容）</option>
               <option value="bailian">阿里云百炼 / 通义（国内）</option>
               <option value="bailian_intl">阿里云百炼（国际站 / 海外）</option>
               <option value="deepseek">DeepSeek</option>
               <option value="moonshot">Moonshot（Kimi）</option>
-              <option value="zhipu">智谱 GLM</option>
+              <option value="zhipu">智谱 GLM（BigModel）</option>
               <option value="hunyuan">腾讯混元</option>
+              <option value="siliconflow">硅基流动 SiliconFlow</option>
+              <option value="baidu">百度智能云千帆（文心 ERNIE）</option>
+              <option value="minimax">MiniMax</option>
+              <option value="stepfun">阶跃星辰 StepFun</option>
+              <option value="yi">零一万物 Yi</option>
+              <option value="gemini">Google Gemini（OpenAI 兼容）</option>
+              <option value="openrouter">OpenRouter（聚合网关）</option>
+              <option value="groq">Groq</option>
+              <option value="together">Together AI</option>
+              <option value="perplexity">Perplexity</option>
+              <option value="xai">xAI（Grok）</option>
               <option value="ollama">Ollama（本地）</option>
               <option value="openai">OpenAI（需梯子）</option>
             </select>
@@ -193,7 +204,8 @@
               <input id="baseURL" type="text" class="w-full px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1" />
             </div>
           </div>
-          <p class="font-sans text-xs text-stone-500 mt-4">💡 浏览器会自动使用你的系统代理，无需单独配置。例如百炼：基地址 <code class="bg-stone-100 px-1 rounded">https://dashscope.aliyuncs.com/compatible-mode/v1</code>，模型 <code class="bg-stone-100 px-1 rounded">qwen-plus</code>。</p>
+          <p class="font-sans text-xs text-stone-500 mt-4">💡 浏览器会自动使用你的系统代理，无需单独配置。例如百炼：基地址 <code class="bg-stone-100 px-1 rounded">https://dashscope.aliyuncs.com/compatible-mode/v1</code>，模型 <code class="bg-stone-100 px-1 rounded">qwen-plus</code>。模型栏为候选建议，可下拉选择也可直接手填任意模型名。</p>
+          <p id="providerNote" class="font-sans text-xs text-stone-500 mt-2 hidden"></p>
           <div class="mt-6 flex items-center gap-4 flex-wrap">
             <button id="testBtn" onclick="testConfig()" class="px-6 py-3 rounded-full font-medium transition-colors duration-300 bg-transparent text-stone-800 border border-stone-300 hover:bg-stone-100">🔌 验证配置</button>
             <span id="cfgStatus" class="font-sans text-sm text-stone-500">尚未验证</span>
@@ -393,16 +405,104 @@
     function setRepoEnabled(on) { repoEls.forEach((el)=>{el.disabled=!on;}); $('repoInputs').classList.toggle('opacity-60',!on); $('repoLockBanner').classList.toggle('hidden',on); }
     function markConfigStale() { configVerified=false; setRepoEnabled(false); $('cfgStatus').textContent='配置已修改，请重新验证'; $('cfgStatus').className='font-sans text-sm text-stone-500'; }
 
+    // 服务商 → 基地址 + 可用模型（已按各官方文档核对，模型名可点击候选，也可手动输入任意值）
     const PROVIDERS = {
-      custom: { base:'', models:[] },
-      bailian: { base:'https://dashscope.aliyuncs.com/compatible-mode/v1', models:['qwen-plus','qwen-max','qwen-turbo','qwen-long','qwen2.5-72b-instruct','qwen3-32b'] },
-      bailian_intl: { base:'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', models:['qwen-plus','qwen-max','qwen-turbo','qwen2.5-72b-instruct'] },
-      deepseek: { base:'https://api.deepseek.com/v1', models:['deepseek-chat','deepseek-reasoner'] },
-      moonshot: { base:'https://api.moonshot.cn/v1', models:['moonshot-v1-8k','moonshot-v1-32k','moonshot-v1-128k'] },
-      zhipu: { base:'https://open.bigmodel.cn/api/paas/v4', models:['glm-4-plus','glm-4-air','glm-4-flash','glm-4-long'] },
-      hunyuan: { base:'https://api.hunyuan.cloud.tencent.com/v1', models:['hunyuan-pro','hunyuan-standard','hunyuan-lite','hunyuan-turbo'] },
-      ollama: { base:'http://localhost:11434/v1', models:['llama3.1','qwen2.5','deepseek-r1','mistral','gemma2'] },
-      openai: { base:'https://api.openai.com/v1', models:['gpt-4o','gpt-4o-mini','gpt-4-turbo','o3-mini'] },
+      custom: { base:'', models:[], note:'可填任意 OpenAI 兼容端点（如火山引擎方舟、本地 vLLM、vLLM 等），模型名请以服务商文档为准。' },
+      bailian: {
+        base:'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        models:['qwen-plus','qwen-max','qwen-turbo','qwen-long','qwen-flash','qwen3.8-max','qwen3.7-max','qwen3-max','qwen3.7-plus','qwen3.6-plus','qwen3.5-plus','qwen3.7-flash','qwen3.6-flash','qwen3.5-flash','qwen3-coder-plus','qwen3-coder-flash','deepseek-v3','deepseek-v3.2','deepseek-r1'],
+        note:'阿里云百炼（国内）OpenAI 兼容端点。qwen-max/plus/flash/turbo/long 为商业版；qwen3.* 与 qwen3-coder-* 为开源/代码版；百炼还托管 deepseek、glm、kimi 等第三方模型。'
+      },
+      bailian_intl: {
+        base:'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+        models:['qwen-plus','qwen-max','qwen-turbo','qwen-long','qwen-flash','qwen3.8-max','qwen3.7-max','qwen3-max','qwen3.7-plus','qwen3.6-plus','qwen3.5-plus','qwen3.7-flash','qwen3.6-flash','qwen3.5-flash','qwen3-coder-plus','qwen3-coder-flash','deepseek-v3.2','deepseek-v3','kimi-k2.7-code','kimi-k2.5'],
+        note:'阿里云百炼国际站（海外区域）OpenAI 兼容端点，模型清单与国内略有差异。'
+      },
+      deepseek: {
+        base:'https://api.deepseek.com/v1',
+        models:['deepseek-v4-pro','deepseek-v4-flash','deepseek-chat','deepseek-reasoner'],
+        note:'deepseek-chat / deepseek-reasoner 已分别对应 deepseek-v4-flash 的非思考 / 思考模式（旧名仍可兼容）。'
+      },
+      moonshot: {
+        base:'https://api.moonshot.cn/v1',
+        models:['kimi-k3','kimi-k2.7-code','kimi-k2.7-code-highspeed','kimi-k2.6','kimi-k2.5','moonshot-v1-8k','moonshot-v1-32k','moonshot-v1-128k','moonshot-v1-auto','moonshot-v1-8k-vision-preview','moonshot-v1-32k-vision-preview','moonshot-v1-128k-vision-preview'],
+        note:'kimi-k3 为最新旗舰；kimi-k2.7-code 为代码专用；moonshot-v1-* 为初代模型（按上下文长度区分）。kimi-k2 / kimi-latest 等旧版已下线。'
+      },
+      zhipu: {
+        base:'https://open.bigmodel.cn/api/paas/v4',
+        models:['glm-4.5','glm-4.5-air','glm-4.5v','glm-4-plus','glm-4-air','glm-4-airx','glm-4-flash','glm-4-flashx','glm-4-long','glm-4','glm-4v','glm-4.7','glm-5','glm-5.3'],
+        note:'智谱 BigModel 平台。glm-4.5 / glm-5 / glm-5.3 为较新旗舰；glm-4-plus/air/flash 为性价比梯队；带 v 为视觉模型。'
+      },
+      hunyuan: {
+        base:'https://api.hunyuan.cloud.tencent.com/v1',
+        models:['hunyuan-turbo','hunyuan-standard','hunyuan-standard-256k','hunyuan-large','hunyuan-lite','hunyuan-t1','hunyuan-turbos','hunyuan-2.0-thinking','hunyuan-2.0-instruct','deepseek-r1','deepseek-v3'],
+        note:'腾讯混元。hunyuan-turbo/standard 为通用版，standard-256k 支持长文本，t1 为推理版，2.0-* 为新一代；也托管 deepseek。'
+      },
+      siliconflow: {
+        base:'https://api.siliconflow.cn/v1',
+        models:['deepseek-ai/DeepSeek-V3','deepseek-ai/DeepSeek-V3.2','deepseek-ai/DeepSeek-R1','Qwen/Qwen3-235B-A22B','Qwen/Qwen3-32B','Qwen/Qwen3-30B-A3B','Qwen/Qwen2.5-72B-Instruct','Qwen/Qwen2.5-7B-Instruct','Qwen/Qwen3-Coder-480B-A35B-Instruct','THUDM/glm-4-9b-chat','ZhipuAI/glm-4.5','miniMaxAI/MiniMax-Text-01','01-ai/Yi-1.5-9B-Chat'],
+        note:'硅基流动模型名采用「组织/模型」命名空间（如 deepseek-ai/DeepSeek-V3），直接复制候选即可，不要改名。'
+      },
+      baidu: {
+        base:'https://qianfan.baidubce.com/v2',
+        models:['ernie-4.5-turbo','ernie-4.5-turbo-128k','ernie-4.5','ernie-4.0-8k','ernie-4.0-turbo-8k','ernie-3.5-8k','ernie-speed','ernie-lite','ernie-x1','ernie-x1-turbo','ernie-5.0-thinking-preview','deepseek-r1','deepseek-v3','deepseek-v3.1','qwen3-235b-a22b','deepseek-r1-distill-qwen-32b'],
+        note:'百度智能云千帆 v2 OpenAI 兼容端点（base 含 /v2）。ernie-* 为文心系列，也托管 deepseek、qwen 等开源模型。'
+      },
+      minimax: {
+        base:'https://api.minimax.io/v1',
+        models:['MiniMax-M2.1','MiniMax-M2','MiniMax-Text-01','abab6.5','abab6.5s','abab5.5'],
+        note:'MiniMax 开放平台。MiniMax-M2.1 / M2 为新一代通用模型，MiniMax-Text-01 为长文本模型，abab* 为旧系列。'
+      },
+      stepfun: {
+        base:'https://api.stepfun.com/v1',
+        models:['step-3.7-flash','step-2','step-1.5v','step-1v','step-1-flash','step-1.5'],
+        note:'阶跃星辰开放平台。step-3.7-flash 为新版高效多模态模型；step-2 为旗舰；step-1v / step-1.5v 为视觉模型。'
+      },
+      yi: {
+        base:'https://api.lingyiwanwu.com/v1',
+        models:['yi-large','yi-large-turbo','yi-medium','yi-medium-200k','yi-lightning','yi-vision','yi-spring'],
+        note:'零一万物开放平台。yi-large 为千亿旗舰，yi-medium 性价比高，yi-lightning 为 MoE 高速版，yi-vision 支持视觉。'
+      },
+      gemini: {
+        base:'https://generativelanguage.googleapis.com/v1beta/openai/',
+        models:['gemini-3.1-pro-preview','gemini-3.5-flash','gemini-3-flash-preview','gemini-2.5-pro','gemini-2.5-flash','gemini-2.5-flash-lite'],
+        note:'Google Gemini 官方 OpenAI 兼容端点（base 含 /v1beta/openai/）。需梯子；gemini-2.5-pro / flash 稳定可用，gemini-3.* 为新一代。'
+      },
+      openrouter: {
+        base:'https://openrouter.ai/api/v1',
+        models:['openai/gpt-4o','openai/gpt-4o-mini','anthropic/claude-3.5-sonnet','deepseek/deepseek-chat','deepseek/deepseek-r1','google/gemini-2.5-pro','qwen/qwen2.5-72b-instruct','meta-llama/llama-3.3-70b-instruct','mistralai/mixtral-8x7b-instruct'],
+        note:'OpenRouter 聚合网关，一个 Key 调用数百模型，模型名用「组织/模型」命名空间。'
+      },
+      groq: {
+        base:'https://api.groq.com/openai/v1',
+        models:['llama-3.3-70b-versatile','llama-3.1-8b-instant','deepseek-r1-distill-llama-70b','gemma2-9b-it','mixtral-8x7b-32768','qwen2.5-32b','llama-3.2-90b-vision-preview'],
+        note:'Groq 以极快推理著称，多为开源模型（Llama / Qwen / DeepSeek 蒸馏 / Gemma / Mixtral）。'
+      },
+      together: {
+        base:'https://api.together.xyz/v1',
+        models:['meta-llama/Llama-3.3-70B-Instruct-Turbo','meta-llama/Llama-3.1-8B-Instruct-Turbo','deepseek-ai/DeepSeek-V3','deepseek-ai/DeepSeek-R1','Qwen/Qwen2.5-72B-Instruct-Turbo','mistralai/Mixtral-8x7B-Instruct-v0.1'],
+        note:'Together AI 托管大量开源模型，模型名用「组织/模型」命名空间。'
+      },
+      perplexity: {
+        base:'https://api.perplexity.ai',
+        models:['sonar','sonar-pro','sonar-reasoning','sonar-reasoning-pro','r1-1776'],
+        note:'Perplexity 在线搜索增强模型。base 为 https://api.perplexity.ai（端点直连 /chat/completions，无需 /v1）。'
+      },
+      xai: {
+        base:'https://api.x.ai/v1',
+        models:['grok-3','grok-3-mini','grok-2','grok-2-mini','grok-beta'],
+        note:'xAI Grok 模型。需梯子。'
+      },
+      ollama: {
+        base:'http://localhost:11434/v1',
+        models:['llama3.1','llama3.2','llama3.3','qwen2.5','qwen3','deepseek-r1','mistral','gemma2','phi3','mixtral'],
+        note:'Ollama 本地服务，模型名为本地已拉取的标签（运行 `ollama list` 查看）。本机需先 `ollama serve`。'
+      },
+      openai: {
+        base:'https://api.openai.com/v1',
+        models:['gpt-5.5','gpt-5.5-pro','gpt-5.4','gpt-5.4-mini','gpt-5.4-nano','gpt-5.2','gpt-5.1','gpt-5','gpt-5-mini','gpt-5-nano','gpt-4.1','gpt-4.1-mini','gpt-4.1-nano','o3','o3-mini','o4-mini','o1','gpt-4o','gpt-4o-mini','gpt-4-turbo'],
+        note:'OpenAI 官方。gpt-5.* 为新一代旗舰，gpt-4.1 / gpt-4o 稳定可用；o* 为推理模型。需梯子。'
+      },
     };
     function applyProvider() {
       const p = $('provider').value, cfg = PROVIDERS[p];
@@ -410,6 +510,8 @@
       if (p !== 'custom') $('baseURL').value = cfg.base;
       $('modelList').innerHTML = (cfg.models||[]).map((m)=>'<option value="'+m+'"></option>').join('');
       if (p !== 'custom' && cfg.models && cfg.models[0]) $('model').value = cfg.models[0];
+      const noteEl = $('providerNote');
+      if (noteEl) { noteEl.textContent = cfg.note || ''; noteEl.classList.toggle('hidden', !cfg.note); }
       markConfigStale();
     }
     $('provider').addEventListener('change', applyProvider);
