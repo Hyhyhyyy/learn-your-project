@@ -374,6 +374,7 @@
             <div class="space-y-2">
               <label class="block font-sans text-sm text-stone-700">GitHub Token（可选）</label>
               <input id="ghToken" type="password" autocomplete="off" disabled class="w-full px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300" placeholder="ghp_..." />
+              <p class="font-sans text-xs text-stone-500">未填 Token 时 GitHub API 配额仅 <b>60 次/小时</b>，加载大仓库（8 并发抓文件）很容易触发 429 导致部分文件被跳过；填写 Token 可提升至 <b>5000 次/小时</b>。Token 仅存本机浏览器，不上传任何服务器。</p>
             </div>
           </div>
           <div class="mt-5 flex items-center gap-3 flex-wrap">
@@ -990,9 +991,26 @@
           buf += dec.decode(value, { stream:true }); flush();
         }
         flush();
+        // 代理可能返回非 SSE 格式（纯 JSON 或空流），若流式解析结果为空则自动降级为非流式单次请求，避免静默空白
+        let fallbackUM = null;
+        if (!content.trim()) {
+          try {
+            const r2 = await fetch(base + '/models/' + model + ':generateContent', { method:'POST', headers, body: JSON.stringify(body), signal: ac.signal });
+            if (r2.ok) {
+              const d2 = await r2.json();
+              content = (d2.candidates && d2.candidates[0] && d2.candidates[0].content && d2.candidates[0].content.parts && d2.candidates[0].content.parts[0] && d2.candidates[0].content.parts[0].text) || '';
+              fallbackUM = d2.usageMetadata || null;
+            }
+          } catch(e2) { /* 降级失败保持空内容，交给上层处理 */ }
+        }
         const est = (s) => Math.max(1, Math.ceil((s||'').length / 1.8));
-        const usage = { prompt_tokens: est(JSON.stringify(messages)), completion_tokens: est(content), total_tokens: 0, _estimated: true };
-        usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+        let usage;
+        if (fallbackUM) {
+          usage = { prompt_tokens: fallbackUM.promptTokenCount || 0, completion_tokens: fallbackUM.candidatesTokenCount || 0, total_tokens: fallbackUM.totalTokenCount || 0 };
+        } else {
+          usage = { prompt_tokens: est(JSON.stringify(messages)), completion_tokens: est(content), total_tokens: 0, _estimated: true };
+          usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+        }
         return { content, usage };
       } finally { clearTimeout(t); }
     }
@@ -1093,6 +1111,8 @@
       if (!res.ok) {
         let msg = res.status + ' ' + res.statusText;
         try { const j = await res.json(); if (j && j.message) msg += ' — ' + j.message; } catch(e){}
+        if (res.status === 429) msg += '（GitHub API 限流：未填 Token 时仅 60 次/小时；填写 Token 可提升至 5000 次/小时，填好后重试）';
+        else if (res.status === 403 && /rate limit/i.test(msg)) msg += '（GitHub API 限流：建议填写 GitHub Token 后重试）';
         throw new Error('GitHub API: ' + msg);
       }
       return res.json();
@@ -1177,13 +1197,16 @@
           // 并发抓取内容（8 并发）
           const files = [];
           let idx = 0;
+          let rateLimited = false;
           async function worker() {
             while (idx < candidates.length) {
               const cur = candidates[idx++];
               try {
                 const j = await ghJSON(GH+'/repos/'+owner+'/'+repo+'/contents/'+encodeURIComponent(cur.path)+'?ref='+branch, cfg.ghToken, ac.signal);
                 if (j.content) files.push({ path: cur.path, content: decodeBase64UTF8(j.content), size: cur.size });
-              } catch(e) { /* skip */ }
+              } catch(e) {
+                if (/429|rate limit|限流/i.test(e.message)) rateLimited = true;  // 仅标记限流，其余瞬时错误静默跳过以保持韧性
+              }
             }
           }
           await Promise.all(Array.from({length:8}, worker));
@@ -1198,7 +1221,7 @@
           }
           currentProject = project;
           clearInterval(ticker);
-          status.innerHTML = '<span class="inline-flex items-center gap-2">✅ 已载入完成：'+project.name+' · 共 '+tree.length+' 个文件，已抓取内容 '+files.length+' 个（API 拉取）</span>';
+          status.innerHTML = '<span class="inline-flex items-center gap-2">✅ 已载入完成：'+project.name+' · 共 '+tree.length+' 个文件，已抓取内容 '+files.length+' 个（API 拉取）</span>' + (rateLimited ? '<div class="mt-1" style="color:#b91c1c">⚠️ 触发 GitHub API 限流，部分文件被跳过。填写 GitHub Token 可将配额从 60 次/小时提升至 5000 次/小时，填好后重新加载可抓取更全。</div>' : '');
           status.className = 'font-sans text-sm text-[#7a6a3f]';
           $('projMeta').textContent = '项目：'+project.name+' · 主语言：'+(project.language||'未知')+' · 分支：'+project.branch;
           $('workspace').classList.remove('hidden');
@@ -1661,13 +1684,13 @@
       for (const d of dirs) {
         const full = pathPrefix ? pathPrefix + '/' + d.name : d.name;
         const id = 'tr_' + full.replace(/[^A-Za-z0-9_]/g, '_');
-        html += '<div class="tree-row"><button type="button" class="tree-toggle" onclick="toggleTree(\'' + id + '\')">📂 ' + esc(d.name) + ' <span class="tree-count">(' + (d.files.length + d.dirs.size) + ')</span></button></div>';
+        html += '<div class="tree-row">' + dataBtn('toggleTree', id, '📂 ' + esc(d.name) + ' <span class="tree-count">(' + (d.files.length + d.dirs.size) + ')</span>') + '</div>';
         html += '<div id="' + id + '" class="tree-children"' + (top ? ' style="display:block;padding-left:0.9rem"' : ' style="display:none;padding-left:0.9rem"') + '>' + renderTreeNode(d, full, false) + '</div>';
       }
       for (const f of files) {
         const full = pathPrefix ? pathPrefix + '/' + f : f;
         const a = full.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-        html += '<div class="tree-row"><button type="button" class="file-item tree-file" onclick="openFileSnippet(\'' + a + '\')">📄 ' + esc(f) + '</button></div>';
+        html += '<div class="tree-row">' + dataBtn('openFile', full, '📄 ' + esc(f), 'file-item tree-file') + '</div>';
       }
       return html;
     }
@@ -1771,8 +1794,7 @@
         box.innerHTML = renderMD(content);
         try { linkifyCitationsIn('auditBody'); } catch (e) {}
         const stat = document.createElement('div'); stat.className = 'cite-row'; stat.style.marginTop = '0.8rem';
-        stat.innerHTML = '<span class="cite-label">📊 改动文件：</span>' + top.slice(0, 14).map((s) => '<button class="cite-chip" data-ap="' + encodeURIComponent(s.path) + '" onclick="openFileSnippetData(this)">' + esc(s.path.split('/').pop()) + ' +' + s.add + '/-' + s.del + '</button>').join('');
-        window.openFileSnippetData = function (el) { openFileSnippet(decodeURIComponent(el.getAttribute('data-ap'))); };
+        stat.innerHTML = '<span class="cite-label">📊 改动文件：</span>' + top.slice(0, 14).map((s) => dataBtn('openFile', s.path, esc(s.path.split('/').pop()) + ' +' + s.add + '/-' + s.del, 'cite-chip')).join('');
         box.appendChild(stat);
       } catch (e) {
         box.innerHTML = '<p class="text-red-700 font-sans">❌ ' + e.message + '</p>';
@@ -1960,6 +1982,23 @@
     const LANG_COLORS = { javascript:'#f1e05a', typescript:'#3178c6', python:'#3572A5', java:'#b07219', go:'#00ADD8', rust:'#dea584', c:'#555555', cpp:'#f34b7d', csharp:'#178600', ruby:'#701516', php:'#4F5D95', swift:'#F05138', kotlin:'#A97BFF', dart:'#00B4AB', html:'#e34c26', css:'#563d7c', vue:'#41b883', svelte:'#ff3e00', shell:'#89e051', markdown:'#083fa1', json:'#cbcbcb', yaml:'#cb171e', dockerfile:'#384d54', makefile:'#427819' };
     function langOf(p) { const b = p.split('/').pop().toLowerCase(); if (b === 'dockerfile') return 'dockerfile'; if (b === 'makefile') return 'makefile'; const e = fileExt(p); return e || '其他'; }
     function esc(s) { return (s||'').replace(/[&<>"']/g, (c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    // 统一收口：所有「带文件路径的数据按钮」改用 data-act + data-ap（URL 编码），由全局事件委托处理，
+    // 彻底避免把仓库文件名拼进 onclick JS 字符串（含 " 的文件名可逃逸属性 → XSS）。data-ap 永远用 encodeURIComponent，点击时 decodeURIComponent 还原。
+    function dataBtn(act, ap, labelHtml, cls, title) {
+      return '<button type="button" class="' + (cls || '') + '" data-act="' + act + '" data-ap="' + encodeURIComponent(ap) + '"' + (title ? ' title="' + esc(title) + '"' : '') + '>' + labelHtml + '</button>';
+    }
+    let tocHeads = [];
+    document.addEventListener('click', function (e) {
+      const el = e.target.closest('[data-act]'); if (!el) return;
+      const act = el.getAttribute('data-act');
+      const ap = el.getAttribute('data-ap');
+      const arg = ap ? decodeURIComponent(ap) : '';
+      if (act === 'openFile') openFileSnippet(arg);
+      else if (act === 'openModule') openModule(arg);
+      else if (act === 'navFromPath') navFromPath(arg);
+      else if (act === 'toggleTree') toggleTree(arg);
+      else if (act === 'scrollTOC') { const idx = Number(el.getAttribute('data-i')); if (tocHeads && tocHeads[idx]) { const y = tocHeads[idx].getBoundingClientRect().top + window.scrollY - 90; window.scrollTo({ top: y, behavior: 'smooth' }); } }
+    });
     let ownProject = false;   // 是否勾选「这是我自己的 VibeCoding 项目」
     let lastReportMD = '';     // 最近一次生成的报告 Markdown（用于导出 .md）
     let lastTutorialMD = '';   // 最近一次生成的教学 Markdown
@@ -1976,7 +2015,7 @@
       // 顶层目录
       const dirs = {};
       for (const f of p.tree) { const seg = f.split('/')[0]; if (f.includes('/')) dirs[seg] = (dirs[seg]||0)+1; }
-      const topDirs = Object.entries(dirs).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([d,c])=>{ const arg = d.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); return '<button type="button" class="ov-chip dir-chip" onclick="openModule(\''+arg+'\')" title="点击进入该模块">📁 '+esc(d)+' <span style="color:#a8a29e">('+c+')</span></button>'; }).join('') || '<span class="toc-empty">（无子目录）</span>';
+      const topDirs = Object.entries(dirs).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([d,c])=> dataBtn('openModule', d, '📁 '+esc(d)+' <span style="color:#a8a29e">('+c+')</span>', 'ov-chip dir-chip', '点击进入该模块')).join('') || '<span class="toc-empty">（无子目录）</span>';
       // 依赖清单（解析 manifests）
       const deps = parseDeps(p.files);
       const depsHtml = deps.length ? deps.map((d)=>'<span class="ov-chip">'+esc(d.name)+(d.ver?(' '+esc(d.ver)):'')+'</span>').join('') : '<span class="toc-empty">未识别到依赖清单（package.json / requirements.txt / go.mod / Cargo.toml 等）</span>';
@@ -1986,7 +2025,7 @@
         const cyc = (p.graph.dirCycles||[]).concat(p.graph.fileCycles||[]);
         let h = '';
         if (p.graph.topKey && p.graph.topKey.length) {
-          h += '<div class="mb-2"><div class="text-xs text-stone-500 mb-1">📌 关键模块（被依赖最多 · 修改需谨慎 · 点击进入）</div>' + p.graph.topKey.slice(0,5).map((k)=>{ const fp = k.file; const seg = fp.split('/'); if (seg.length < 2) return '<span class="ov-chip">'+esc(seg[seg.length-1])+' <span style="color:#a8a29e">·被'+k.fanIn+'依赖</span></span>'; const arg = seg[0].replace(/\\/g,'\\\\').replace(/'/g,"\\'"); return '<button type="button" class="ov-chip dir-chip" onclick="openModule(\''+arg+'\')" title="'+esc(fp)+'">'+esc(seg[seg.length-1])+' <span style="color:#a8a29e">·被'+k.fanIn+'依赖</span></button>'; }).join('') + '</div>';
+          h += '<div class="mb-2"><div class="text-xs text-stone-500 mb-1">📌 关键模块（被依赖最多 · 修改需谨慎 · 点击进入）</div>' + p.graph.topKey.slice(0,5).map((k)=>{ const fp = k.file; const seg = fp.split('/'); if (seg.length < 2) return '<span class="ov-chip">'+esc(seg[seg.length-1])+' <span style="color:#a8a29e">·被'+k.fanIn+'依赖</span></span>'; return dataBtn('openModule', seg[0], esc(seg[seg.length-1])+' <span style="color:#a8a29e">·被'+k.fanIn+'依赖</span>', 'ov-chip dir-chip', fp); }).join('') + '</div>';
         } else {
           // 退化为结构概况：最大目录、最深路径、符号数量
           const dirCount = {};
@@ -2180,7 +2219,7 @@
       const parts = path.split('/');
       // 面包屑
       let acc = '', crumb = '';
-      for (let i = 0; i < parts.length; i++) { acc = i === 0 ? parts[0] : acc + '/' + parts[i]; const a = acc.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); crumb += (i ? ' <span style="color:#d6cdbf">/</span> ' : '') + '<button type="button" class="crumb" onclick="openModule(\''+a+'\')">'+esc(parts[i])+'</button>'; }
+      for (let i = 0; i < parts.length; i++) { acc = i === 0 ? parts[0] : acc + '/' + parts[i]; crumb += (i ? ' <span style="color:#d6cdbf">/</span> ' : '') + dataBtn('openModule', acc, esc(parts[i]), 'crumb'); }
       head.innerHTML = '📂 ' + crumb;
       // 分类：子目录 vs 直接文件
       const subdirs = new Set(); const leaves = [];
@@ -2207,11 +2246,11 @@
       }
       // 子目录（可继续下钻）
       if (subdirs.size) {
-        html += '<div class="mod-sec-h">📁 子目录（点击继续进入）</div><div class="mod-subs">' + [...subdirs].sort().map((d)=>{ const a = (path + '/' + d).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); return '<button type="button" class="dir-chip" onclick="openModule(\''+a+'\')">📂 '+esc(d)+'</button>'; }).join('') + '</div>';
+        html += '<div class="mod-sec-h">📁 子目录（点击继续进入）</div><div class="mod-subs">' + [...subdirs].sort().map((d)=> dataBtn('openModule', path + '/' + d, '📂 '+esc(d), 'dir-chip')).join('') + '</div>';
       }
       // 文件列表（点击查看真实代码）
       if (leaves.length) {
-        html += '<div class="mod-sec-h">📄 文件（点击查看代码）</div><div class="mod-files">' + leaves.map((f)=>{ const isEntry = entrySet.has(f.path); return '<button type="button" class="file-item'+(isEntry?' entry':'')+'" onclick="openFileSnippet(\''+f.path.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')"><span class="fi-name">'+esc(relName(f.path))+'</span>'+(isEntry?'<span class="entry-badge">入口</span>':'')+'</button>'; }).join('') + '</div>';
+        html += '<div class="mod-sec-h">📄 文件（点击查看代码）</div><div class="mod-files">' + leaves.map((f)=>{ const isEntry = entrySet.has(f.path); return dataBtn('openFile', f.path, '<span class="fi-name">'+esc(relName(f.path))+'</span>'+(isEntry?'<span class="entry-badge">入口</span>':''), 'file-item'+(isEntry?' entry':'')); }).join('') + '</div>';
       } else if (!subdirs.size) {
         html += '<div class="toc-empty">该路径下未抓取到文件（可能尚未被加载，或为空目录）。</div>';
       }
@@ -2796,7 +2835,7 @@
         p.codeMap = items; box.innerHTML = renderCodeMap(items);
       } catch (e) { box.innerHTML = '<span class="toc-empty">生成失败：' + esc(e.message || String(e)) + '</span>'; }
     }
-    function renderCodeMap(items) { return '<div class="space-y-2">' + items.map((it) => { const a = it.path.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); return '<div class="code-map-item"><button type="button" class="cm-path cm-link" onclick="navFromPath(\''+a+'\')" title="点击进入该路径">'+esc(it.path)+'</button><span class="cm-desc">'+esc(it.desc)+'</span></div>'; }).join('') + '</div>'; }
+    function renderCodeMap(items) { return '<div class="space-y-2">' + items.map((it) => '<div class="code-map-item">' + dataBtn('navFromPath', it.path, esc(it.path), 'cm-path cm-link', '点击进入该路径') + '<span class="cm-desc">'+esc(it.desc)+'</span></div>').join('') + '</div>'; }
     // 代码地图/任意路径：是文件则看代码，是目录则进模块
     function navFromPath(path) {
       const p = currentProject; if (!p) return;
@@ -2970,11 +3009,12 @@
       const heads = Array.from(box.querySelectorAll('h2, h3'));
       if (!heads.length) { panel.classList.add('hidden'); return; }
       panel.classList.remove('hidden');
+      tocHeads = heads;
       let html = '<div class="toc-title">📑 本页目录</div>';
       heads.forEach((h, i) => {
         if (!h.id) h.id = 'toc-h-' + i;
         const cls = 'toc-item' + (h.tagName === 'H3' ? ' toc-sub' : '');
-        html += '<a class="'+cls+'" onclick="scrollToHead(\''+h.id+'\')">'+esc(h.textContent||'')+'</a>';
+        html += '<a class="'+cls+'" data-act="scrollTOC" data-i="'+i+'">'+esc(h.textContent||'')+'</a>';
       });
       panel.innerHTML = html;
       // scroll-spy
