@@ -14,7 +14,7 @@
 
 ## 特性
 
-- 🔌 **任意 OpenAI 兼容模型**：阿里云百炼 / DeepSeek / Moonshot / 智谱 / 混元 / Ollama / OpenAI 等（需允许浏览器跨域 CORS，百炼、DeepSeek、Moonshot 等均原生支持）。
+- 🔌 **主流大模型原生协议**：原生支持 **OpenAI 兼容**（阿里云百炼 / DeepSeek / Moonshot / 智谱 / 混元 / Ollama / OpenAI…）以及 **Anthropic Claude**、**Google Gemini** 官方协议（Gemini 还支持原生 Embedding 与批量向量化），无需中转代理；各协议基地址自动适配（需允许浏览器跨域 CORS，主流厂商均原生支持）。
 - 🌱 **纯浏览器加载 GitHub 仓库**：经 GitHub API 在前端直接拉取，目录深的大仓库自动 BFS 分页，避免 504；支持私有 / 企业仓库（填 GitHub Token，仅存本机）。
 - 📁 **本地文件夹也能读（杀手锏）**：用 File System Access API 把**还没 push 的 VibeCoding 项目**直接拖进来读懂——竞品都只能解析公开仓库，这是纯静态才能做到的差异点。
 - 🎯 **指挥 AI 的行动清单（VibeCoding 精髓）**：基于真实文件扫描（孤儿文件 / 巨型文件 / 循环依赖 / 测试 / README / 入口清晰度），给出「AI 自主度风险」指数与可复制的下一步指令；勾选「这是我自己的 VibeCoding 项目」即开启。
@@ -31,7 +31,7 @@
 
 ## 使用
 
-本项目为纯静态站点，部署到 GitHub Pages 后访问 `https://<你的用户名>.github.io/<仓库名>/`（由 `gh-pages` 分支托管）。本地预览：
+本项目为纯静态站点，部署到 GitHub Pages 后访问 `https://<你的用户名>.github.io/<仓库名>/`（由 `main` 分支根目录托管）。本地预览：
 
 1. 「模型配置」填写 API Key / 基地址 / 模型 → 点击「验证配置」。
 2. 「加载仓库」粘贴 `https://github.com/owner/repo`；若是你自己的 VibeCoding 项目，勾选「🎯 这是我自己的 VibeCoding 项目」→ 点击「加载仓库」。
@@ -48,8 +48,8 @@ python -m http.server 8000
 
 ## 演示（Demo）
 
-> 演示 GIF 待录制（发布前补充到 `docs/demo.gif`）。推荐录制流程：
-> ① 粘贴一个 VibeCoding 项目仓库 → ② 勾选「我自己的 VibeCoding 项目」→ ③ 看「指挥 AI 的行动清单」→ ④ 点「AI 变更审计」→ ⑤ 在「项目问答」追问。
+> 演示 GIF 发布前录制（放入 `docs/demo.gif`）。推荐 30 秒流程：① 粘贴一个 VibeCoding 项目仓库 → ② 勾选「🎯 这是我自己的 VibeCoding 项目」→ ③ 看「指挥 AI 的行动清单」→ ④ 点「AI 变更审计」→ ⑤ 在「项目问答」追问。
+> 嫌手动麻烦可运行 `node scripts/record-demo.mjs`（需先 `npm i playwright` 并 `npx playwright install chromium`）自动驱动页面并录屏，再用 `ffmpeg` 把 `docs/*.webm` 转成 GIF。
 
 ## 与 DeepWiki / Zread 对比
 
@@ -59,7 +59,7 @@ python -m http.server 8000
 | --- | --- | --- |
 | 部署形态 | **纯静态 SPA，零后端**，可托管在 GitHub Pages | 云端服务，需服务端索引 |
 | 隐私 | **密钥仅存浏览器本地**，文件不出本机 | 仓库内容上传到对方服务端 |
-| 模型 | **任意 OpenAI 兼容**（百炼 / DeepSeek / 本地 Ollama…） | 绑定自家模型 |
+| 模型 | **OpenAI 兼容 / Claude / Gemini 原生协议**（百炼 / DeepSeek / 本地 Ollama / Anthropic / Google…） | 绑定自家模型 |
 | 本地 / 未公开项目 | ✅ **支持本地文件夹（File System Access API）**、私有仓库 Token | ❌ 通常仅限公开仓库 |
 | VibeCoding 场景 | ✅ 指挥 AI 行动清单、AI 变更审计、缓存秒开 | 偏通用文档 / 问答 |
 | 依赖图 / 调用图 | ✅ 项目地图 + 代码知识图谱 | ✅ 交互式图表（云端算力） |
