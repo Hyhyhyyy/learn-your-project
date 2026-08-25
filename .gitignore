@@ -1,0 +1,5 @@
+# 录屏脚本产物（几十 MB，不要提交）
+docs/*.webm
+
+# 依赖（若本地 npm i playwright）
+node_modules/
