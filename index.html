@@ -771,15 +771,34 @@
         finally { clearTimeout(t); }
         if (!res.ok) { let msg = res.status + ' ' + res.statusText; try { const j = await res.json(); if (j && j.error && j.error.message) msg += ' — ' + j.error.message; } catch(e){} throw new Error(msg); }
         const j = await res.json();
-        let ids = [];
-        if (c.apiStyle === 'gemini') { ids = (j.models || []).map((m)=> (m.name || '').replace(/^models\//,'')).filter(Boolean); }
-        else { const arr = j.data || j.models || []; ids = arr.map((m)=> m.id || m.name || '').filter(Boolean).map((s)=> String(s).replace(/^models\//,'')); }
+        const arr = c.apiStyle === 'gemini' ? (j.models || []) : (j.data || j.models || []);
+        let ids = [], maxCreated = 0;
+        for (const m of arr) {
+          let id = c.apiStyle === 'gemini' ? (m.name || '') : (m.id || m.name || '');
+          id = String(id || '').replace(/^models\//,'').trim();
+          if (!id) continue;
+          ids.push(id);
+          const ts = (c.apiStyle === 'anthropic' ? m.created_at : m.created) || 0;
+          if (ts > maxCreated) maxCreated = ts;
+        }
         if (!ids.length) throw new Error('端点返回为空');
         runtimeModels[p] = Array.from(new Set([...(runtimeModels[p] || []), ...ids]));
         // 重新渲染候选（applyProvider 会合并 runtimeModels）
         $('model').value = $('model').value || ids[0];
         applyProvider();
-        if (st) st.textContent = '✅ 已拉取 ' + ids.length + ' 个可用模型，已合并进候选；也可手填任意模型名。';
+        // 截止日期：优先用端点返回的最新模型 created 时间戳，否则用本机拉取时间
+        const fetchedAt = new Date();
+        let dateLabel;
+        if (maxCreated) {
+          const d = new Date(maxCreated * 1000);
+          const ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+          dateLabel = '官网最新模型更新于 ' + ds;
+        } else {
+          const ds = fetchedAt.getFullYear() + '-' + String(fetchedAt.getMonth()+1).padStart(2,'0') + '-' + String(fetchedAt.getDate()).padStart(2,'0');
+          const tm = String(fetchedAt.getHours()).padStart(2,'0') + ':' + String(fetchedAt.getMinutes()).padStart(2,'0');
+          dateLabel = '（端点未返回更新时间，以下为本机拉取快照 ' + ds + ' ' + tm + '）';
+        }
+        if (st) st.textContent = '✅ 已拉取 ' + ids.length + ' 个可用模型，' + dateLabel + '，已合并进候选；也可手填任意模型名。';
       } catch(e) {
         if (st) st.textContent = '⚠️ 该端点不支持 /models 或请求失败（' + e.message + '），已保留候选清单，你可手动输入模型名。';
       } finally {
