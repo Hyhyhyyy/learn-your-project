@@ -730,6 +730,8 @@
     };
     // 运行时「拉取可用模型」缓存：provider -> Set(额外模型 id)，会话内持久，与写死清单合并
     const runtimeModels = {};
+    // 记录上一次选择的服务商，基地址仅在其变化时重设，避免覆盖用户手动修改的代理/中转地址
+    let lastProvider = null;
     function getModelCandidates() {
       const p = $('provider').value, cfg = PROVIDERS[p];
       const set = new Set(cfg ? (cfg.models || []) : []);
@@ -756,10 +758,15 @@
     function applyProvider() {
       const p = $('provider').value, cfg = PROVIDERS[p];
       if (!cfg) return;
-      // 不自动把实际内容填入输入框：基地址仅以 placeholder 提示，模型候选由下拉提供，避免初始/切换服务商时被预填真实值
+      // 基地址严格跟随所选服务商：仅当服务商真正变化时重设为规范端点；自定义则清空由用户填写。
+      // 用 lastProvider 守卫，避免「拉取可用模型」等再次调用 applyProvider 时覆盖用户手动改过的代理/中转地址。
       const baseInput = $('baseURL');
-      if (p === 'custom') baseInput.placeholder = 'https://你的-OpenAI-兼容端点/v1';
-      else if (cfg.base) baseInput.placeholder = '建议基地址（可修改）：' + cfg.base;
+      if (p !== lastProvider) {
+        if (p === 'custom') { baseInput.value = ''; baseInput.placeholder = 'https://你的-OpenAI-兼容端点/v1'; }
+        else if (cfg.base) { baseInput.value = cfg.base; baseInput.placeholder = '（已随服务商自动设为规范基地址，可手动覆盖）'; }
+        else { baseInput.value = ''; }
+        lastProvider = p;
+      }
       // 根据服务商自动切换 API 风格
       const styleMap = { anthropic:'anthropic', gemini_native:'gemini' };
       const style = styleMap[p] || 'openai';
