@@ -756,8 +756,10 @@
     function applyProvider() {
       const p = $('provider').value, cfg = PROVIDERS[p];
       if (!cfg) return;
-      if (p !== 'custom') $('baseURL').value = cfg.base;
-      if (p !== 'custom' && cfg.models && cfg.models[0] && !$('model').value) $('model').value = cfg.models[0];
+      // 不自动把实际内容填入输入框：基地址仅以 placeholder 提示，模型候选由下拉提供，避免初始/切换服务商时被预填真实值
+      const baseInput = $('baseURL');
+      if (p === 'custom') baseInput.placeholder = 'https://你的-OpenAI-兼容端点/v1';
+      else if (cfg.base) baseInput.placeholder = '建议基地址（可修改）：' + cfg.base;
       // 根据服务商自动切换 API 风格
       const styleMap = { anthropic:'anthropic', gemini_native:'gemini' };
       const style = styleMap[p] || 'openai';
