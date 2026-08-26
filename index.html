@@ -293,6 +293,10 @@
               <label class="block font-sans text-sm text-stone-700">模型名称</label>
               <input id="model" type="text" list="modelList" class="w-full px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300" placeholder="qwen-plus / deepseek-chat / gpt-4o-mini" />
               <datalist id="modelList"></datalist>
+              <div class="flex items-center gap-3 mt-2">
+                <button id="refreshModelsBtn" type="button" onclick="refreshModels()" class="px-3 py-1.5 rounded-full text-xs font-medium border border-stone-300 text-stone-700 hover:bg-stone-100 transition-colors duration-200">🔄 拉取可用模型</button>
+                <span id="modelRefreshStatus" class="font-sans text-xs text-stone-500"></span>
+              </div>
             </div>
             <div class="space-y-2 md:col-span-2">
               <label class="block font-sans text-sm text-stone-700">基地址（Base URL）</label>
@@ -722,12 +726,16 @@
         note:'OpenAI 官方。gpt-5.* 为新一代旗舰，gpt-4.1 / gpt-4o 稳定可用；o* 为推理模型。需梯子。'
       },
     };
+    // 运行时「拉取可用模型」缓存：provider -> Set(额外模型 id)，会话内持久，与写死清单合并
+    const runtimeModels = {};
     function applyProvider() {
       const p = $('provider').value, cfg = PROVIDERS[p];
       if (!cfg) return;
       if (p !== 'custom') $('baseURL').value = cfg.base;
-      $('modelList').innerHTML = (cfg.models||[]).map((m)=>'<option value="'+m+'"></option>').join('');
-      if (p !== 'custom' && cfg.models && cfg.models[0]) $('model').value = cfg.models[0];
+      const merged = new Set(cfg.models || []);
+      (runtimeModels[p] || []).forEach((m)=>merged.add(m));
+      $('modelList').innerHTML = Array.from(merged).map((m)=>'<option value="'+m+'"></option>').join('');
+      if (p !== 'custom' && cfg.models && cfg.models[0] && !$('model').value) $('model').value = cfg.models[0];
       // 根据服务商自动切换 API 风格
       const styleMap = { anthropic:'anthropic', gemini_native:'gemini' };
       const style = styleMap[p] || 'openai';
@@ -737,6 +745,47 @@
       markConfigStale(); saveAppSettings();
     }
     $('provider').addEventListener('change', applyProvider);
+    // 拉取端点真实支持的模型（OpenAI 兼容 / Anthropic / Gemini），合并进候选；不支持则保留写死清单
+    async function refreshModels() {
+      const p = $('provider').value, cfg = PROVIDERS[p];
+      const c = getConfig();
+      const btn = $('refreshModelsBtn'), st = $('modelRefreshStatus');
+      if (!c.baseURL || !c.apiKey) { if (st) st.textContent = '⚠️ 请先填 API Key 与基地址'; return; }
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ 拉取中…'; }
+      if (st) st.textContent = '正在向端点请求可用模型…';
+      try {
+        let url, headers = {};
+        if (c.apiStyle === 'anthropic') {
+          url = 'https://api.anthropic.com/v1/models';
+          headers = { 'x-api-key': c.apiKey, 'anthropic-version': '2023-06-01' };
+        } else if (c.apiStyle === 'gemini') {
+          url = c.baseURL.replace(/\/+$/,'') + '/models?key=' + encodeURIComponent(c.apiKey);
+        } else {
+          url = c.baseURL.replace(/\/+$/,'') + '/models';
+          headers = { 'Authorization': 'Bearer ' + c.apiKey };
+        }
+        const ac = new AbortController();
+        const t = setTimeout(()=>ac.abort(), 20000);
+        let res;
+        try { res = await fetch(url, { headers, signal: ac.signal }); }
+        finally { clearTimeout(t); }
+        if (!res.ok) { let msg = res.status + ' ' + res.statusText; try { const j = await res.json(); if (j && j.error && j.error.message) msg += ' — ' + j.error.message; } catch(e){} throw new Error(msg); }
+        const j = await res.json();
+        let ids = [];
+        if (c.apiStyle === 'gemini') { ids = (j.models || []).map((m)=> (m.name || '').replace(/^models\//,'')).filter(Boolean); }
+        else { const arr = j.data || j.models || []; ids = arr.map((m)=> m.id || m.name || '').filter(Boolean).map((s)=> String(s).replace(/^models\//,'')); }
+        if (!ids.length) throw new Error('端点返回为空');
+        runtimeModels[p] = Array.from(new Set([...(runtimeModels[p] || []), ...ids]));
+        // 重新渲染候选（applyProvider 会合并 runtimeModels）
+        $('model').value = $('model').value || ids[0];
+        applyProvider();
+        if (st) st.textContent = '✅ 已拉取 ' + ids.length + ' 个可用模型，已合并进候选；也可手填任意模型名。';
+      } catch(e) {
+        if (st) st.textContent = '⚠️ 该端点不支持 /models 或请求失败（' + e.message + '），已保留候选清单，你可手动输入模型名。';
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 拉取可用模型'; }
+      }
+    }
     if ($('apiStyle')) $('apiStyle').addEventListener('change', ()=>{ updateApiStyleNote(); markConfigStale(); saveAppSettings(); });
     function updateApiStyleNote() {
       const el = $('apiStyleNote'); if (!el) return;
