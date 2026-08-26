@@ -291,8 +291,10 @@
             </div>
             <div class="space-y-2">
               <label class="block font-sans text-sm text-stone-700">模型名称</label>
-              <input id="model" type="text" list="modelList" class="w-full px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300" placeholder="qwen-plus / deepseek-chat / gpt-4o-mini" />
-              <datalist id="modelList"></datalist>
+              <div class="relative">
+                <input id="model" type="text" autocomplete="off" class="w-full px-5 py-3 bg-white border border-stone-200 rounded-full text-stone-800 placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200 transition-all duration-300" placeholder="qwen-plus / deepseek-chat / gpt-4o-mini" />
+                <div id="modelDropdown" class="hidden absolute z-30 left-0 right-0 mt-1 bg-white border border-stone-200 rounded-2xl shadow-xl overflow-y-auto" style="max-height:360px"></div>
+              </div>
               <div class="flex items-center gap-3 mt-2">
                 <button id="refreshModelsBtn" type="button" onclick="refreshModels()" class="px-3 py-1.5 rounded-full text-xs font-medium border border-stone-300 text-stone-700 hover:bg-stone-100 transition-colors duration-200">🔄 拉取可用模型</button>
                 <span id="modelRefreshStatus" class="font-sans text-xs text-stone-500"></span>
@@ -728,13 +730,33 @@
     };
     // 运行时「拉取可用模型」缓存：provider -> Set(额外模型 id)，会话内持久，与写死清单合并
     const runtimeModels = {};
+    function getModelCandidates() {
+      const p = $('provider').value, cfg = PROVIDERS[p];
+      const set = new Set(cfg ? (cfg.models || []) : []);
+      (runtimeModels[p] || []).forEach((m)=>set.add(m));
+      return Array.from(set);
+    }
+    // 自定义模型候选下拉：一次显示约 10 个（max-height 360px 滚动），可搜索、可键盘导航，全部候选均可达
+    let dropdownItems = [], activeIdx = -1;
+    function buildModelDropdown(filter) {
+      const list = getModelCandidates();
+      const f = (filter || '').trim().toLowerCase();
+      dropdownItems = f ? list.filter((m)=> m.toLowerCase().includes(f)) : list;
+      const dd = $('modelDropdown');
+      if (!dropdownItems.length) { dd.innerHTML = '<div class="px-4 py-2 text-xs text-stone-400">无匹配模型，可直接手填</div>'; return; }
+      dd.innerHTML = dropdownItems.map((m,i)=>'<div class="model-opt px-4 py-2 text-sm text-stone-700 hover:bg-stone-100 cursor-pointer" data-i="'+i+'">'+esc(m)+'</div>').join('');
+      activeIdx = -1;
+    }
+    function openModelDropdown() { const dd = $('modelDropdown'); buildModelDropdown($('model').value); dd.classList.remove('hidden'); }
+    function closeModelDropdown() { const dd = $('modelDropdown'); if (dd) dd.classList.add('hidden'); }
+    function highlightModelOpt() {
+      const opts = document.querySelectorAll('#modelDropdown .model-opt');
+      opts.forEach((o,i)=>{ const on = i === activeIdx; o.classList.toggle('bg-stone-100', on); if (on) o.scrollIntoView({ block:'nearest' }); });
+    }
     function applyProvider() {
       const p = $('provider').value, cfg = PROVIDERS[p];
       if (!cfg) return;
       if (p !== 'custom') $('baseURL').value = cfg.base;
-      const merged = new Set(cfg.models || []);
-      (runtimeModels[p] || []).forEach((m)=>merged.add(m));
-      $('modelList').innerHTML = Array.from(merged).map((m)=>'<option value="'+m+'"></option>').join('');
       if (p !== 'custom' && cfg.models && cfg.models[0] && !$('model').value) $('model').value = cfg.models[0];
       // 根据服务商自动切换 API 风格
       const styleMap = { anthropic:'anthropic', gemini_native:'gemini' };
@@ -828,6 +850,25 @@
       el.classList.toggle('hidden', !el.textContent);
     }
     ['apiKey','baseURL','model','ghToken'].forEach((id)=>$(id).addEventListener('input', ()=>{ markConfigStale(); saveAppSettings(); }));
+    // 模型候选自定义下拉交互
+    (function wireModelDropdown() {
+      const inp = $('model'), dd = $('modelDropdown'); if (!inp || !dd) return;
+      inp.addEventListener('focus', openModelDropdown);
+      inp.addEventListener('input', ()=>{ openModelDropdown(); });
+      inp.addEventListener('blur', ()=> setTimeout(closeModelDropdown, 120));
+      inp.addEventListener('keydown', (e)=>{
+        if (dd.classList.contains('hidden')) { if (e.key === 'ArrowDown') { openModelDropdown(); e.preventDefault(); } return; }
+        if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, dropdownItems.length - 1); highlightModelOpt(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); highlightModelOpt(); }
+        else if (e.key === 'Enter') { if (activeIdx >= 0 && dropdownItems[activeIdx] !== undefined) { inp.value = dropdownItems[activeIdx]; closeModelDropdown(); markConfigStale(); saveAppSettings(); e.preventDefault(); } }
+        else if (e.key === 'Escape') { closeModelDropdown(); }
+      });
+      dd.addEventListener('mousedown', (e)=>{
+        const opt = e.target.closest('.model-opt'); if (!opt) return;
+        const i = +opt.dataset.i; if (dropdownItems[i] !== undefined) { inp.value = dropdownItems[i]; closeModelDropdown(); markConfigStale(); saveAppSettings(); }
+      });
+      document.addEventListener('click', (e)=>{ if (!dd.contains(e.target) && e.target !== inp) closeModelDropdown(); });
+    })();
     const _rmRadios = document.querySelectorAll('input[name="retrievalMode"]');
     _rmRadios.forEach((r)=>r.addEventListener('change', ()=>{ saveAppSettings(); onRetrievalModeChange(); }));
     if ($('embedModel')) $('embedModel').addEventListener('input', saveAppSettings);
